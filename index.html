@@ -781,14 +781,21 @@
         showToast(showPrices ? "Prix masqués." : "Prix affichés.", "info");
       };
 
-      // ---- Export / Import ----
+      // ---- Export / Import (CORRIGÉ) ----
       const exportData = () => {
         let products = [];
         if (selectedBrandForData) {
           const brand = brands.find(b => b.id === selectedBrandForData);
-          if (brand) products = brand.products.map(p => ({ Nom: p.name, Prix: p.price, Pack: p.qty }));
+          if (brand) {
+            // Sécurisation : si brand.products est undefined, on utilise []
+            const prods = brand.products || [];
+            products = prods.map(p => ({ Nom: p.name, Prix: p.price, Pack: p.qty }));
+          }
         } else {
-          brands.forEach(b => b.products.forEach(p => products.push({ Nom: p.name, Prix: p.price, Pack: p.qty })));
+          brands.forEach(b => {
+            const prods = b.products || [];
+            prods.forEach(p => products.push({ Nom: p.name, Prix: p.price, Pack: p.qty }));
+          });
         }
         if (products.length === 0) { showToast("Aucune donnée à exporter.", "error"); return; }
         const wb = XLSX.utils.book_new();
@@ -834,6 +841,8 @@
             if (brand) {
               await firebase.database().ref('brands').child(selectedBrandForData).update({ products: newProducts });
               showToast(`${newProducts.length} produits importés.`, "success");
+            } else {
+              showToast("Marque introuvable.", "error");
             }
           } catch (err) {
             console.error(err);
@@ -851,7 +860,7 @@
         const brand = brands.find(b => b.id === selectedBrandForData);
         if (!brand) { showToast("Marque introuvable.", "error"); return; }
 
-        let updatedProducts = [...brand.products];
+        let updatedProducts = [...(brand.products || [])];
         let count = 0;
         const normalize = (str) => str.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
         const productMap = {};
@@ -972,7 +981,7 @@
                     React.createElement("button", { onClick: deleteBrand, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
                     React.createElement("button", { onClick: cancelDeleteBrand, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
                   ),
-                  // --- CORRECTION ICI ---
+                  // Sécurisation du map
                   (b.products || []).map(p => React.createElement("div", { key: p.id, className: "flex items-center gap-2 mt-2" },
                     React.createElement("button", {
                       onClick: () => toggleProductVisibility(b.id, p.id),
@@ -1025,9 +1034,11 @@
                 )
               ),
               React.createElement("div", { className: "flex flex-col gap-3" },
+                // Importer : garde le disabled
                 React.createElement(Button, { variant: "secondary", onClick: () => fileInputRef.current.click(), disabled: !selectedBrandForData }, "Importer"),
                 React.createElement("input", { type: "file", ref: fileInputRef, accept: ".xlsx,.xls", onChange: handleImport, className: "hidden" }),
-                React.createElement(Button, { variant: "secondary", onClick: exportData, disabled: !selectedBrandForData }, "Exporter"),
+                // Exporter : plus de disabled
+                React.createElement(Button, { variant: "secondary", onClick: exportData }, "Exporter"),
                 React.createElement(Button, { variant: "secondary", onClick: () => imageInputRef.current.click(), disabled: !selectedBrandForData }, "Ajouter les images"),
                 React.createElement("input", { type: "file", ref: imageInputRef, accept: "image/*", multiple: true, onChange: handleAddImages, className: "hidden" })
               ),
