@@ -264,7 +264,6 @@
           const ordersListener = ordersRef.on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
-              // L'ID est toujours la clé Firebase, même si l'objet contient un champ id
               const ordersArray = Object.keys(data).map(key => ({ ...data[key], id: key }));
               setOrders(ordersArray);
             } else {
@@ -702,14 +701,46 @@
         showToast("Commande annulée.", "info");
       };
 
-      // ---- Navigation ----
+      // ---- GESTION DU BOUTON RETOUR ANDROID (ne pas quitter l'appli) ----
+      useEffect(() => {
+        const handlePopState = (event) => {
+          if (event.state && event.state.view === 'DETAIL') {
+            // Revenir au dashboard
+            setCurrentView(DICT.VIEW.DASHBOARD);
+            setSelectedBrand(null);
+          } else {
+            // État null (tentative de sortie) ou autre, on empêche la fermeture en restant au dashboard
+            history.pushState({ view: 'DASHBOARD' }, '', window.location.href);
+            setCurrentView(DICT.VIEW.DASHBOARD);
+            setSelectedBrand(null);
+          }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        // Initialisation de l'historique
+        history.replaceState({ view: 'DASHBOARD' }, '', window.location.href);
+        return () => window.removeEventListener('popstate', handlePopState);
+      }, []);
+
+      // ---- Navigation (modifiée pour l'historique) ----
       const openBrand = brand => {
         setIsTransitioning(true);
-        setTimeout(() => { setSelectedBrand(brand); setCurrentView(DICT.VIEW.DETAIL); setIsTransitioning(false); }, 300);
+        setTimeout(() => { 
+          setSelectedBrand(brand); 
+          setCurrentView(DICT.VIEW.DETAIL); 
+          setIsTransitioning(false); 
+          history.pushState({ view: 'DETAIL', brandId: brand.id }, '', '');
+        }, 300);
       };
+
       const goHome = () => {
         setIsTransitioning(true);
-        setTimeout(() => { setCurrentView(DICT.VIEW.DASHBOARD); setIsTransitioning(false); }, 300);
+        setTimeout(() => { 
+          setCurrentView(DICT.VIEW.DASHBOARD); 
+          setSelectedBrand(null);
+          setIsTransitioning(false); 
+          history.replaceState({ view: 'DASHBOARD' }, '', window.location.href);
+        }, 300);
       };
 
       // ---- Détail produit / Panier ----
@@ -761,7 +792,6 @@
         const message = `📦 Nouvelle Commande !\nNouvelle commande de ${totalItems} articles, total : ${total} DZD.`;
         fetch(url, { method: 'POST', body: message })
           .then(response => {
-            // MODIFICATION : le total n'apparaît plus si les prix sont masqués
             const successMsg = showPrices
               ? `✅ Commande validée ! ${totalItems} article(s) - ${total} DZD.`
               : `✅ Commande validée ! ${totalItems} article(s).`;
@@ -1124,7 +1154,7 @@
           )
         ),
 
-        // ---- MODALE PANIER (modifiée avec les champs client) ----
+        // ---- MODALE PANIER ----
         React.createElement(Modal, { isOpen: modals.cart, title: "Mon panier", onClose: () => setModals(prev => ({ ...prev, cart: false })) },
           React.createElement("div", { className: "space-y-4" },
             cart.length === 0 ?
@@ -1175,7 +1205,7 @@
                     React.createElement("span", { className: `text-lg font-bold text-[${THEME.colors.primary}]` }, getTotalPrice() + " DZD")
                   )
                 ),
-                // ---- CHAMPS CLIENT AJOUTÉS ----
+                // ---- CHAMPS CLIENT ----
                 React.createElement("div", { className: "space-y-3 mt-4 border-t border-[#3A4A5F] pt-4" },
                   React.createElement("label", { className: "block text-xs font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Informations de livraison"),
                   React.createElement("input", {
@@ -1204,7 +1234,6 @@
                     onChange: e => setClientInfo({...clientInfo, commentaire: e.target.value})
                   })
                 ),
-                // ---- FIN DES CHAMPS CLIENT ----
                 React.createElement("div", { className: "flex gap-3 mt-4" },
                   React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "flex-1" }, "Fermer"),
                   React.createElement(Button, { onClick: validateOrder, className: "flex-1" }, "Valider la commande")
@@ -1213,7 +1242,7 @@
           )
         ),
 
-        // ---- MODALE COMMANDES (affichage des infos client, nom au lieu de l'id) ----
+        // ---- MODALE COMMANDES ----
         React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => setModals(prev => ({ ...prev, orders: false })) },
           React.createElement("div", { className: "flex justify-between items-center mb-4" },
             React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg` }, "Commandes"),
@@ -1242,18 +1271,15 @@
             React.createElement("div", { className: "space-y-4" },
               orders.filter(order => order.status === orderTab).map(order => React.createElement("div", { key: order.id, className: `border border-[${THEME.colors.border}] rounded-xl p-4 bg-[${THEME.colors.cardBg}]` },
                 React.createElement("div", { className: "flex justify-between items-center" },
-                  // AFFICHAGE : nom du client
                   React.createElement("span", { className: `font-medium text-[${THEME.colors.primary}]` }, "Commande de ", (order.client && order.client.nom) || order.id),
                   React.createElement("span", { className: `text-sm text-[${THEME.colors.textMuted}]` }, order.date)
                 ),
-                // ---- AFFICHAGE CLIENT ----
                 order.client && React.createElement("div", { className: "text-sm text-[#9CA3AF] mb-2 mt-1" },
                   React.createElement("p", null, "Client : ", order.client.nom),
                   React.createElement("p", null, "Adresse : ", order.client.adresse),
                   React.createElement("p", null, "Tél : ", order.client.telephone),
                   order.client.commentaire && React.createElement("p", { className: "italic" }, "Note : ", order.client.commentaire)
                 ),
-                // ---- FIN AFFICHAGE CLIENT ----
                 order.items.map(item => React.createElement("div", { key: item.id, className: `flex justify-between text-sm text-[${THEME.colors.text}] border-b border-[${THEME.colors.border}] py-1` },
                   React.createElement("span", null, item.name, " x", item.quantity),
                   showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}]` }, item.quantity * item.price * item.packQty, " DZD") : React.createElement("span", null, "-")
@@ -1286,7 +1312,7 @@
           )
         ),
 
-        // ---- MODALE OPTIONS AVANCÉES (inchangée) ----
+        // ---- MODALE OPTIONS AVANCÉES ----
         React.createElement(Modal, { isOpen: modals.advancedOptions, title: "Options avancées", onClose: () => setModals(prev => ({ ...prev, advancedOptions: false })) },
           React.createElement("div", { className: "flex flex-col gap-3" },
             React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, imgbb: true })); } }, "Banque d'images"),
