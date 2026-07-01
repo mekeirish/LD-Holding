@@ -21,35 +21,18 @@
     .modal-content { animation: scaleIn 0.25s ease-out; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-    /* ---- Toast Animations ---- */
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-slide-up {
-      animation: slideUp 0.3s ease-out;
-    }
-    .toast-exit {
-      animation: fadeOut 0.2s ease-in forwards;
-    }
-    @keyframes fadeOut {
-      from { opacity: 1; transform: translateY(0); }
-      to { opacity: 0; transform: translateY(-10px); }
-    }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-slide-up { animation: slideUp 0.3s ease-out; }
   </style>
-
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4b6cb7">
-<link rel="apple-touch-icon" href="icon.png"></head>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4b6cb7">
+  <link rel="apple-touch-icon" href="icon.png">
+</head>
 <body>
   <div id="root"></div>
-
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-
   <script>
-    // ---- NOUVELLE CONFIGURATION FIREBASE (LD-Holding) ----
     const firebaseConfig = {
       apiKey: "AIzaSyB6uTZ4iCqNMzL-GeZq6tDgoI_sJj-ZMuo",
       authDomain: "ld-holding.firebaseapp.com",
@@ -62,7 +45,6 @@
     };
     firebase.initializeApp(firebaseConfig);
   </script>
-
   <script>
     const THEME = {
       colors: {
@@ -81,7 +63,6 @@
 
     const { useState, useEffect, useRef } = React;
 
-    // ---- Composants ----
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
       const base = "w-full py-4 font-medium rounded-2xl transition-all duration-200 active:scale-[0.98]";
       const variants = {
@@ -150,7 +131,6 @@
         React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "Pack: ", product.qty, " unités")
       );
 
-    // ---- Toast ----
     const Toast = ({ message, type, onClose }) => {
       if (!message) return null;
       const accentColors = {
@@ -158,11 +138,7 @@
         error: 'border-rose-500',
         info: 'border-[#E8F04F]'
       };
-      const icons = {
-        success: '✓',
-        error: '✕',
-        info: 'ℹ'
-      };
+      const icons = { success: '✓', error: '✕', info: 'ℹ' };
       const textColors = {
         success: 'text-[#3DC59D]',
         error: 'text-rose-400',
@@ -177,7 +153,6 @@
       ));
     };
 
-    // ---- Hachage ----
     const hashPin = async (pin) => {
       const encoder = new TextEncoder();
       const data = encoder.encode(pin);
@@ -186,9 +161,7 @@
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     };
 
-    // ---- Composant principal ----
     const App = () => {
-      // États
       const [isAdmin, setIsAdmin] = useState(false);
       const [showPinModal, setShowPinModal] = useState(false);
       const [pinInput, setPinInput] = useState('');
@@ -198,30 +171,22 @@
       const [adminList, setAdminList] = useState([]);
       const [showManageAdmins, setShowManageAdmins] = useState(false);
       const [newAdminName, setNewAdminName] = useState('');
-
       const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
       const [deleteTarget, setDeleteTarget] = useState(null);
       const [deleteCode, setDeleteCode] = useState('');
 
-      // États synchronisés avec Firebase
       const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem('app_logo') || null);
       const [appTitle, setAppTitle] = useState(() => localStorage.getItem('app_title') || 'MARKET HUB');
       const [brands, setBrands] = useState([]);
       const [orders, setOrders] = useState([]);
       const [loading, setLoading] = useState(true);
-
-      // État pour l'URL du logo dans le champ de saisie
       const [logoUrlInput, setLogoUrlInput] = useState('');
-
-      // ---- Informations client pour la commande ----
       const [clientInfo, setClientInfo] = useState({ nom: '', adresse: '', telephone: '', commentaire: '' });
 
-      // Références
       const fileInputRef = useRef(null);
       const imageInputRef = useRef(null);
       const logoInputRef = useRef(null);
 
-      // ---- Écouteurs Firebase ----
       useEffect(() => {
         try {
           const settingsRef = firebase.database().ref('settings');
@@ -264,7 +229,16 @@
           const ordersListener = ordersRef.on('value', (snapshot) => {
             const data = snapshot.val();
             if (data) {
-              const ordersArray = Object.keys(data).map(key => ({ ...data[key], id: key }));
+              const ordersArray = Object.keys(data).map(key => {
+                const order = data[key];
+                return {
+                  ...order,
+                  id: key,
+                  items: Array.isArray(order.items) ? order.items : [],
+                  status: order.status || 'received',
+                  client: order.client || { nom: '', adresse: '', telephone: '', commentaire: '' }
+                };
+              });
               setOrders(ordersArray);
             } else {
               setOrders([]);
@@ -276,15 +250,8 @@
         }
       }, []);
 
-      // Sauvegarde locale
-      useEffect(() => {
-        if (logoUrl) localStorage.setItem('app_logo', logoUrl);
-        else localStorage.removeItem('app_logo');
-      }, [logoUrl]);
-
-      useEffect(() => {
-        localStorage.setItem('app_title', appTitle);
-      }, [appTitle]);
+      useEffect(() => { if (logoUrl) localStorage.setItem('app_logo', logoUrl); else localStorage.removeItem('app_logo'); }, [logoUrl]);
+      useEffect(() => { localStorage.setItem('app_title', appTitle); }, [appTitle]);
 
       const [showPrices, setShowPrices] = useState(() => {
         const saved = localStorage.getItem('show_prices');
@@ -299,9 +266,7 @@
       const showToast = (message, type = 'info') => {
         if (toastTimeout.current) clearTimeout(toastTimeout.current);
         setToast({ message, type, visible: true });
-        toastTimeout.current = setTimeout(() => {
-          setToast({ message: '', type: 'info', visible: false });
-        }, 4000);
+        toastTimeout.current = setTimeout(() => setToast({ message: '', type: 'info', visible: false }), 4000);
       };
       const hideToast = () => {
         if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -338,28 +303,20 @@
       const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('ntfy_topic') || 'ldholdingnotif');
       useEffect(() => localStorage.setItem('ntfy_topic', ntfyTopic), [ntfyTopic]);
 
-      // ---- Fonctions Firebase (admins) ----
+      // Fonctions Firebase
       const fetchAdmins = async () => {
         try {
           const snapshot = await firebase.database().ref('admins').once('value');
           const data = snapshot.val();
-          if (data && Array.isArray(data)) {
-            const valid = data.filter(item => item && typeof item === 'object' && item.name && item.hash);
-            return valid;
-          }
+          if (data && Array.isArray(data)) return data.filter(item => item && typeof item === 'object' && item.name && item.hash);
           return [];
-        } catch (err) {
-          console.error('Erreur chargement admins:', err);
-          return [];
-        }
+        } catch (err) { console.error('Erreur chargement admins:', err); return []; }
       };
 
       const addAdminPin = async (pin, name = 'MEKEIRISHDEV') => {
         const hash = await hashPin(pin);
         const current = await fetchAdmins();
-        if (current.some(a => a.hash === hash)) {
-          throw new Error('Ce code PIN existe déjà.');
-        }
+        if (current.some(a => a.hash === hash)) throw new Error('Ce code PIN existe déjà.');
         const newList = [...current, { name, hash }];
         await firebase.database().ref('admins').set(newList);
         return { name, hash };
@@ -371,7 +328,6 @@
         await firebase.database().ref('admins').set(newList);
       };
 
-      // ---- Gestion logo ----
       const uploadToImgbb = async (dataUrl) => {
         if (!imgbbApiKey) throw new Error('Clé API imgbb manquante');
         let base64 = dataUrl;
@@ -390,13 +346,9 @@
           const url = await uploadToImgbb(dataUrl);
           setter({ ...state, image: url });
           showToast('Image uploadée avec succès.', 'success');
-        } catch (err) {
-          console.error(err);
-          showToast('Erreur upload image: ' + err.message, 'error');
-        }
+        } catch (err) { console.error(err); showToast('Erreur upload image: ' + err.message, 'error'); }
       };
 
-      // Upload par fichier (inchangé)
       const handleLogoUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -421,10 +373,8 @@
             reader.onerror = () => reject(new Error("Erreur lecture fichier"));
             reader.readAsDataURL(file);
           });
-
           setLogoUrl(dataUrl);
           showToast('Logo mis à jour localement.', 'success');
-
           let finalUrl = dataUrl;
           if (imgbbApiKey) {
             try {
@@ -446,13 +396,9 @@
         e.target.value = '';
       };
 
-      // Nouvelle fonction : appliquer une URL de logo directement
       const handleLogoUrlSubmit = async () => {
         const url = logoUrlInput.trim();
-        if (!url) {
-          showToast('Veuillez entrer une URL valide.', 'error');
-          return;
-        }
+        if (!url) { showToast('Veuillez entrer une URL valide.', 'error'); return; }
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
           showToast('L\'URL doit commencer par http:// ou https://', 'error');
           return;
@@ -462,10 +408,7 @@
           await firebase.database().ref('settings').update({ logo: url });
           setLogoUrlInput('');
           showToast('Logo mis à jour avec succès.', 'success');
-        } catch (err) {
-          console.error(err);
-          showToast('Erreur lors de la mise à jour du logo: ' + err.message, 'error');
-        }
+        } catch (err) { console.error(err); showToast('Erreur lors de la mise à jour du logo: ' + err.message, 'error'); }
       };
 
       const handleTitleChange = async () => {
@@ -480,86 +423,72 @@
         }
       };
 
-      // ---- Gestion PIN ----
       const openPinModal = async (mode = 'verify') => {
         try {
           const admins = await fetchAdmins();
           setAdminList(admins);
-          if (admins.length === 0 && mode === 'verify') {
-            setPinMode('create');
-          } else {
-            setPinMode(mode);
-          }
+          if (admins.length === 0 && mode === 'verify') setPinMode('create');
+          else setPinMode(mode);
           setPinInput('');
           setPinConfirm('');
           setPinError('');
           setShowPinModal(true);
+        } catch (err) { console.error('Erreur openPinModal:', err); showToast('Erreur lors de la vérification du PIN.', 'error'); }
+      };
+
+      const handlePinSubmit = async () => {
+        try {
+          const admins = await fetchAdmins();
+          setAdminList(admins);
+          if (pinMode === 'verify') {
+            if (admins.length === 0) {
+              setPinMode('create');
+              setPinError('Aucun admin existant. Veuillez créer le premier code PIN.');
+              return;
+            }
+            const inputHash = await hashPin(pinInput);
+            if (admins.some(a => a.hash === inputHash)) {
+              setIsAdmin(true);
+              setCurrentView(DICT.VIEW.DASHBOARD);
+              setSelectedBrand(null);
+              setShowPinModal(false);
+              setPinInput('');
+              showToast('Mode administrateur activé.', 'success');
+            } else {
+              setPinError('Code PIN incorrect.');
+            }
+          } else if (pinMode === 'create') {
+            if (pinInput.length < 8) { setPinError('Le PIN doit comporter au moins 8 chiffres.'); return; }
+            if (pinInput !== pinConfirm) { setPinError('Les PINs ne correspondent pas.'); return; }
+            try {
+              await addAdminPin(pinInput, 'MEKEIRISHDEV');
+              setIsAdmin(true);
+              setCurrentView(DICT.VIEW.DASHBOARD);
+              setSelectedBrand(null);
+              setShowPinModal(false);
+              setPinInput('');
+              setPinConfirm('');
+              showToast('Premier admin créé (MEKEIRISHDEV).', 'success');
+            } catch (err) { setPinError(err.message); }
+          }
         } catch (err) {
-          console.error('Erreur openPinModal:', err);
+          console.error('Erreur handlePinSubmit:', err);
+          setPinError('Erreur lors de la vérification du PIN : ' + (err.message || 'Erreur inconnue'));
           showToast('Erreur lors de la vérification du PIN.', 'error');
         }
       };
 
-      const handlePinSubmit = async () => {
-        const admins = await fetchAdmins();
-        setAdminList(admins);
-        if (pinMode === 'verify') {
-          if (admins.length === 0) {
-            setPinMode('create');
-            setPinError('Aucun admin existant. Veuillez créer le premier code PIN.');
-            return;
-          }
-          const inputHash = await hashPin(pinInput);
-          if (admins.some(a => a.hash === inputHash)) {
-            setIsAdmin(true);
-            setCurrentView(DICT.VIEW.DASHBOARD);
-            setSelectedBrand(null);
-            setShowPinModal(false);
-            setPinInput('');
-            showToast('Mode administrateur activé.', 'success');
-          } else {
-            setPinError('Code PIN incorrect.');
-          }
-        } else if (pinMode === 'create') {
-          if (pinInput.length < 8) {
-            setPinError('Le PIN doit comporter au moins 8 chiffres.');
-            return;
-          }
-          if (pinInput !== pinConfirm) {
-            setPinError('Les PINs ne correspondent pas.');
-            return;
-          }
-          try {
-            await addAdminPin(pinInput, 'MEKEIRISHDEV');
-            setIsAdmin(true);
-            setCurrentView(DICT.VIEW.DASHBOARD);
-            setSelectedBrand(null);
-            setShowPinModal(false);
-            setPinInput('');
-            setPinConfirm('');
-            showToast('Premier admin créé (MEKEIRISHDEV).', 'success');
-          } catch (err) {
-            setPinError(err.message);
-          }
-        }
-      };
-
       const toggleAdmin = () => {
-        if (isAdmin) {
-          setIsAdmin(false);
-          showToast('Mode administrateur désactivé.', 'info');
-        } else {
-          openPinModal('verify');
-        }
+        if (isAdmin) { setIsAdmin(false); showToast('Mode administrateur désactivé.', 'info'); }
+        else openPinModal('verify');
       };
 
       const openManageAdmins = () => {
-        fetchAdmins().then(setAdminList);
+        fetchAdmins().then(setAdminList).catch(err => { console.error('Erreur chargement admins:', err); showToast('Erreur lors du chargement des administrateurs.', 'error'); });
         setShowManageAdmins(true);
         setModals(prev => ({ ...prev, advancedOptions: false }));
       };
 
-      // ---- Suppression admin sécurisée ----
       const handleRemoveAdmin = (hash, name) => {
         setDeleteTarget({ hash, name });
         setDeleteCode('');
@@ -583,67 +512,65 @@
         }
       };
 
-      // ---- CRUD Marques (Firebase) ----
       const [newBrand, setNewBrand] = useState({ name: "", image: null });
       const addBrand = async () => {
         if (!newBrand.name) { showToast("Veuillez entrer un nom de marque.", "error"); return; }
-        const brandData = { ...newBrand, products: [] };
-        await firebase.database().ref('brands').push(brandData);
-        setNewBrand({ name: "", image: null });
-        setModals(prev => ({ ...prev, brand: false }));
-        showToast("Marque ajoutée avec succès.", "success");
+        try {
+          const brandData = { ...newBrand, products: [] };
+          await firebase.database().ref('brands').push(brandData);
+          setNewBrand({ name: "", image: null });
+          setModals(prev => ({ ...prev, brand: false }));
+          showToast("Marque ajoutée avec succès.", "success");
+        } catch (err) { console.error('Erreur addBrand:', err); showToast('Erreur lors de l\'ajout de la marque.', 'error'); }
       };
 
       const saveBrandEdit = async () => {
         if (!editingBrandId) return;
-        const updated = { name: editingBrandName, image: editingBrandImage };
-        await firebase.database().ref('brands').child(editingBrandId).update(updated);
-        cancelEditBrand();
-        showToast("Marque modifiée avec succès.", "success");
+        try {
+          const updated = { name: editingBrandName, image: editingBrandImage };
+          await firebase.database().ref('brands').child(editingBrandId).update(updated);
+          cancelEditBrand();
+          showToast("Marque modifiée avec succès.", "success");
+        } catch (err) { console.error('Erreur saveBrandEdit:', err); showToast('Erreur lors de la modification de la marque.', 'error'); }
       };
 
       const deleteBrand = async () => {
         if (!confirmDeleteBrandId) return;
-        await firebase.database().ref('brands').child(confirmDeleteBrandId).remove();
-        setConfirmDeleteBrandId(null);
-        if (manageSelectedBrand === confirmDeleteBrandId) setManageSelectedBrand(null);
-        showToast("Marque supprimée.", "success");
+        try {
+          await firebase.database().ref('brands').child(confirmDeleteBrandId).remove();
+          setConfirmDeleteBrandId(null);
+          if (manageSelectedBrand === confirmDeleteBrandId) setManageSelectedBrand(null);
+          showToast("Marque supprimée.", "success");
+        } catch (err) { console.error('Erreur deleteBrand:', err); showToast('Erreur lors de la suppression de la marque.', 'error'); }
       };
 
-      // ---- CRUD Produits (Firebase) ----
       const [newProduct, setNewProduct] = useState({ name: "", qty: "", price: "", image: null, brandId: null });
       const addProduct = async () => {
-        if (!newProduct.name || !newProduct.brandId) {
-          showToast("Veuillez remplir tous les champs.", "error");
-          return;
-        }
-        const product = {
-          id: Date.now(),
-          name: newProduct.name,
-          qty: Number(newProduct.qty),
-          price: Number(newProduct.price),
-          image: newProduct.image || null,
-          hidden: false
-        };
-        const brand = brands.find(b => b.id === newProduct.brandId);
-        if (!brand) return;
-        const updatedProducts = [...brand.products, product];
-        await firebase.database().ref('brands').child(newProduct.brandId).update({ products: updatedProducts });
-        setNewProduct({ name: "", qty: "", price: "", image: null, brandId: null });
-        setModals(prev => ({ ...prev, product: false }));
-        showToast("Produit ajouté avec succès.", "success");
+        if (!newProduct.name || !newProduct.brandId) { showToast("Veuillez remplir tous les champs.", "error"); return; }
+        try {
+          const product = { id: Date.now(), name: newProduct.name, qty: Number(newProduct.qty), price: Number(newProduct.price), image: newProduct.image || null, hidden: false };
+          const brand = brands.find(b => b.id === newProduct.brandId);
+          if (!brand) return;
+          const updatedProducts = [...brand.products, product];
+          await firebase.database().ref('brands').child(newProduct.brandId).update({ products: updatedProducts });
+          setNewProduct({ name: "", qty: "", price: "", image: null, brandId: null });
+          setModals(prev => ({ ...prev, product: false }));
+          showToast("Produit ajouté avec succès.", "success");
+        } catch (err) { console.error('Erreur addProduct:', err); showToast('Erreur lors de l\'ajout du produit.', 'error'); }
       };
 
       const saveProductEdit = async () => {
         if (!editingProduct) return;
         const brand = brands.find(b => b.products.some(p => p.id === editingProduct.id));
         if (!brand) return;
-        const updatedProducts = brand.products.map(p =>
-          p.id === editingProduct.id ? { ...editingProduct, qty: Number(editingProduct.qty), price: Number(editingProduct.price) } : p
-        );
-        await firebase.database().ref('brands').child(brand.id).update({ products: updatedProducts });
-        setEditingProduct(null);
-        showToast("Produit modifié avec succès.", "success");
+        try {
+          const updatedProducts = brand.products.map(p =>
+            p.id === editingProduct.id ? { ...editingProduct, qty: Number(editingProduct.qty), price: Number(editingProduct.price) } : p
+          );
+          await firebase.database().ref('brands').child(brand.id).update({ products: updatedProducts });
+          setEditingProduct(null);
+          showToast("Produit modifié avec succès.", "success");
+        } catch (err) { console.error('Erreur saveProductEdit:', err); showToast('Erreur lors de la modification du produit.', 'error'); }
       };
 
       const deleteProduct = async () => {
@@ -651,20 +578,23 @@
         const { brandId, productId } = confirmDeleteProduct;
         const brand = brands.find(b => b.id === brandId);
         if (!brand) return;
-        const updatedProducts = brand.products.filter(p => p.id !== productId);
-        await firebase.database().ref('brands').child(brandId).update({ products: updatedProducts });
-        setConfirmDeleteProduct(null);
-        showToast("Produit supprimé.", "success");
+        try {
+          const updatedProducts = brand.products.filter(p => p.id !== productId);
+          await firebase.database().ref('brands').child(brandId).update({ products: updatedProducts });
+          setConfirmDeleteProduct(null);
+          showToast("Produit supprimé.", "success");
+        } catch (err) { console.error('Erreur deleteProduct:', err); showToast('Erreur lors de la suppression du produit.', 'error'); }
       };
 
       const toggleProductVisibility = async (brandId, productId) => {
         const brand = brands.find(b => b.id === brandId);
         if (!brand) return;
-        const updatedProducts = brand.products.map(p => p.id === productId ? { ...p, hidden: !p.hidden } : p);
-        await firebase.database().ref('brands').child(brandId).update({ products: updatedProducts });
+        try {
+          const updatedProducts = brand.products.map(p => p.id === productId ? { ...p, hidden: !p.hidden } : p);
+          await firebase.database().ref('brands').child(brandId).update({ products: updatedProducts });
+        } catch (err) { console.error('Erreur toggleProductVisibility:', err); showToast('Erreur lors du changement de visibilité.', 'error'); }
       };
 
-      // ---- Commandes (Firebase) ----
       const validateOrder = async () => {
         if (cart.length === 0) { showToast("Votre panier est vide.", "error"); return; }
         if (!clientInfo.nom.trim()) { showToast("Veuillez entrer votre nom.", "error"); return; }
@@ -679,50 +609,52 @@
           status: 'received',
           client: { ...clientInfo }
         };
-        await firebase.database().ref('orders').push(newOrder);
-        setCart([]);
-        setClientInfo({ nom: '', adresse: '', telephone: '', commentaire: '' });
-        setModals(prev => ({ ...prev, cart: false }));
-        sendNtfy(totalItems, total);
+        try {
+          await firebase.database().ref('orders').push(newOrder);
+          setCart([]);
+          setClientInfo({ nom: '', adresse: '', telephone: '', commentaire: '' });
+          setModals(prev => ({ ...prev, cart: false }));
+          sendNtfy(totalItems, total);
+        } catch (err) { console.error('Erreur validateOrder:', err); showToast('Erreur lors de la validation de la commande.', 'error'); }
       };
 
       const handleProcess = async (orderId) => {
-        await firebase.database().ref('orders').child(orderId).update({ status: 'processing' });
-        showToast("Commande traitée.", "success");
+        try {
+          await firebase.database().ref('orders').child(orderId).update({ status: 'processing' });
+          showToast("Commande traitée.", "success");
+        } catch (err) { console.error('Erreur handleProcess:', err); showToast('Erreur lors du traitement de la commande.', 'error'); }
       };
 
       const handleDeliver = async (orderId) => {
-        await firebase.database().ref('orders').child(orderId).update({ status: 'delivered' });
-        showToast("Commande livrée.", "success");
+        try {
+          await firebase.database().ref('orders').child(orderId).update({ status: 'delivered' });
+          showToast("Commande livrée.", "success");
+        } catch (err) { console.error('Erreur handleDeliver:', err); showToast('Erreur lors de la livraison de la commande.', 'error'); }
       };
 
       const handleCancelOrder = async (orderId) => {
-        await firebase.database().ref('orders').child(orderId).remove();
-        showToast("Commande annulée.", "info");
+        try {
+          await firebase.database().ref('orders').child(orderId).remove();
+          showToast("Commande annulée.", "info");
+        } catch (err) { console.error('Erreur handleCancelOrder:', err); showToast('Erreur lors de l\'annulation de la commande.', 'error'); }
       };
 
-      // ---- GESTION DU BOUTON RETOUR ANDROID (ne pas quitter l'appli) ----
       useEffect(() => {
         const handlePopState = (event) => {
           if (event.state && event.state.view === 'DETAIL') {
-            // Revenir au dashboard
             setCurrentView(DICT.VIEW.DASHBOARD);
             setSelectedBrand(null);
           } else {
-            // État null (tentative de sortie) ou autre, on empêche la fermeture en restant au dashboard
             history.pushState({ view: 'DASHBOARD' }, '', window.location.href);
             setCurrentView(DICT.VIEW.DASHBOARD);
             setSelectedBrand(null);
           }
         };
-
         window.addEventListener('popstate', handlePopState);
-        // Initialisation de l'historique
         history.replaceState({ view: 'DASHBOARD' }, '', window.location.href);
         return () => window.removeEventListener('popstate', handlePopState);
       }, []);
 
-      // ---- Navigation (modifiée pour l'historique) ----
       const openBrand = brand => {
         setIsTransitioning(true);
         setTimeout(() => { 
@@ -743,7 +675,6 @@
         }, 300);
       };
 
-      // ---- Détail produit / Panier ----
       const openProductDetail = (product, brand) => {
         setSelectedProduct({ ...product, brandName: brand.name, brandId: brand.id });
         setProductQuantity(1);
@@ -782,7 +713,6 @@
       const getTotalCartItems = () => cart.reduce((sum, item) => sum + item.quantity, 0);
       const getTotalPrice = () => cart.reduce((sum, item) => sum + item.quantity * item.price * item.packQty, 0);
 
-      // ---- Ntfy ----
       const sendNtfy = (totalItems, total) => {
         const topic = ntfyTopic || 'ldholdingnotif';
         const url = new URL(`https://ntfy.sh/${topic}`);
@@ -792,9 +722,7 @@
         const message = `📦 Nouvelle Commande !\nNouvelle commande de ${totalItems} articles, total : ${total} DZD.`;
         fetch(url, { method: 'POST', body: message })
           .then(response => {
-            const successMsg = showPrices
-              ? `✅ Commande validée ! ${totalItems} article(s) - ${total} DZD.`
-              : `✅ Commande validée ! ${totalItems} article(s).`;
+            const successMsg = showPrices ? `✅ Commande validée ! ${totalItems} article(s) - ${total} DZD.` : `✅ Commande validée ! ${totalItems} article(s).`;
             if (response.ok) showToast(successMsg, "success");
             else showToast(`❌ Erreur ${response.status}: notification non envoyée.`, "error");
           })
@@ -815,13 +743,11 @@
           .catch(() => showToast(`❌ Erreur réseau sur le topic "${topic}".`, "error"));
       };
 
-      // ---- Admin / Prix ----
       const togglePrices = () => {
         setShowPrices(prev => !prev);
         showToast(showPrices ? "Prix masqués." : "Prix affichés.", "info");
       };
 
-      // ---- Export / Import (CORRIGÉ) ----
       const exportData = () => {
         let products = [];
         if (selectedBrandForData) {
@@ -883,10 +809,7 @@
             } else {
               showToast("Marque introuvable.", "error");
             }
-          } catch (err) {
-            console.error(err);
-            showToast("Erreur lors de la lecture du fichier.", "error");
-          }
+          } catch (err) { console.error(err); showToast("Erreur lors de la lecture du fichier.", "error"); }
         };
         reader.readAsArrayBuffer(file);
         e.target.value = '';
@@ -898,13 +821,11 @@
         if (!selectedBrandForData) { showToast("Veuillez sélectionner une marque.", "error"); return; }
         const brand = brands.find(b => b.id === selectedBrandForData);
         if (!brand) { showToast("Marque introuvable.", "error"); return; }
-
         let updatedProducts = [...(brand.products || [])];
         let count = 0;
         const normalize = (str) => str.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
         const productMap = {};
         updatedProducts.forEach((p, idx) => { const key = normalize(p.name); if (key) productMap[key] = idx; });
-
         const processImage = (file) => new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (event) => {
@@ -925,7 +846,6 @@
           reader.onerror = () => reject(new Error("Erreur lecture fichier"));
           reader.readAsDataURL(file);
         });
-
         for (const file of files) {
           const nameWithoutExt = file.name.replace(/\.[^.]+$/, '').trim();
           const normalizedFileName = normalize(nameWithoutExt);
@@ -936,23 +856,20 @@
               const finalUrl = await uploadToImgbb(dataUrl);
               updatedProducts[productIndex] = { ...updatedProducts[productIndex], image: finalUrl };
               count++;
-            } catch (err) {
-              console.error('Erreur upload image:', file.name, err);
-              showToast(`Erreur pour ${file.name}: ${err.message}`, 'error');
-            }
+            } catch (err) { console.error('Erreur upload image:', file.name, err); showToast(`Erreur pour ${file.name}: ${err.message}`, 'error'); }
           }
         }
-
         if (count > 0) {
-          await firebase.database().ref('brands').child(selectedBrandForData).update({ products: updatedProducts });
-          showToast(`${count} image(s) associée(s).`, "success");
+          try {
+            await firebase.database().ref('brands').child(selectedBrandForData).update({ products: updatedProducts });
+            showToast(`${count} image(s) associée(s).`, "success");
+          } catch (err) { console.error('Erreur mise à jour images:', err); showToast('Erreur lors de la mise à jour des images.', 'error'); }
         } else {
           showToast("Aucune image associée (vérifiez les noms).", "error");
         }
         e.target.value = '';
       };
 
-      // ---- Gestion des éditions / suppressions ----
       const startEditBrand = brand => {
         setEditingBrandId(brand.id);
         setEditingBrandName(brand.name);
@@ -968,7 +885,7 @@
       const triggerConfirmDeleteProduct = (brandId, productId) => setConfirmDeleteProduct({ brandId, productId });
       const cancelDeleteProduct = () => setConfirmDeleteProduct(null);
 
-      // ---- Rendu des modales ----
+      // ----- RENDU DES MODALES (COMPLET) -----
       const renderModals = () => React.createElement(React.Fragment, null,
         // Modale Nouvelle Marque
         React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
@@ -984,7 +901,6 @@
             React.createElement(Button, { onClick: addBrand }, "Créer")
           )
         ),
-
         // Modale Gestion
         React.createElement(Modal, { isOpen: modals.manage, title: "Gestion", onClose: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } },
           !showDataPanel ?
@@ -996,14 +912,8 @@
                 }, b.name),
                 manageSelectedBrand === b.id && React.createElement("div", { className: "ml-2 mt-2 space-y-2" },
                   React.createElement("div", { className: "flex gap-2" },
-                    React.createElement("button", {
-                      onClick: () => startEditBrand(b),
-                      className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition`
-                    }, "Modifier"),
-                    React.createElement("button", {
-                      onClick: () => confirmDeleteBrand(b.id),
-                      className: `text-sm bg-[${THEME.colors.secondary}] text-white px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition`
-                    }, "Supprimer")
+                    React.createElement("button", { onClick: () => startEditBrand(b), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Modifier"),
+                    React.createElement("button", { onClick: () => confirmDeleteBrand(b.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Supprimer")
                   ),
                   editingBrandId === b.id && React.createElement("div", { className: `p-4 bg-[${THEME.colors.inputBg}] rounded-xl space-y-2 border border-[${THEME.colors.border}]` },
                     React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
@@ -1026,10 +936,7 @@
                       className: `w-6 h-6 rounded border-2 flex items-center justify-center text-xs font-bold transition-colors ${p.hidden ? `border-[${THEME.colors.border}] bg-gray-700 text-gray-400` : `border-[${THEME.colors.primary}] bg-[${THEME.colors.primary}]/20 text-[${THEME.colors.primary}]`}`,
                       title: p.hidden ? "Masqué" : "Visible"
                     }, p.hidden ? "✖" : "✔"),
-                    React.createElement("button", {
-                      onClick: () => setEditingProduct(editingProduct?.id === p.id ? null : p),
-                      className: `flex-1 p-2 bg-[${THEME.colors.inputBg}] text-[${THEME.colors.text}] text-sm rounded-lg text-left hover:bg-[${THEME.colors.cardBg}] transition`
-                    }, p.name),
+                    React.createElement("button", { onClick: () => setEditingProduct(editingProduct?.id === p.id ? null : p), className: `flex-1 p-2 bg-[${THEME.colors.inputBg}] text-[${THEME.colors.text}] text-sm rounded-lg text-left hover:bg-[${THEME.colors.cardBg}] transition` }, p.name),
                     React.createElement("button", { onClick: () => triggerConfirmDeleteProduct(b.id, p.id), className: "text-rose-400 font-medium text-sm px-2" }, "×"),
                     editingProduct?.id === p.id && React.createElement("div", { className: `p-4 mt-2 bg-[${THEME.colors.inputBg}] rounded-xl w-full space-y-2 border border-[${THEME.colors.border}]` },
                       React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
@@ -1081,7 +988,6 @@
               React.createElement(Button, { variant: "secondary", onClick: () => { setShowDataPanel(false); setSelectedBrandForData(''); }, className: "mt-4" }, "Retour")
             )
         ),
-
         // Modale Choisir Marque
         React.createElement(Modal, { isOpen: modals.brandSelect, title: "Choisir Marque", onClose: () => setModals(prev => ({ ...prev, brandSelect: false })) },
           React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" },
@@ -1093,7 +999,6 @@
           ),
           React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brandSelect: false })) }, DICT.UI.BTN_CANCEL)
         ),
-
         // Modale Nouveau Produit
         React.createElement(Modal, { isOpen: modals.product, title: "Nouveau Produit", onClose: () => setModals(prev => ({ ...prev, product: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
@@ -1109,7 +1014,6 @@
             React.createElement(Button, { onClick: addProduct }, "Ajouter")
           )
         ),
-
         // Modale API imgbb
         React.createElement(Modal, { isOpen: modals.imgbb, title: "Banque d'images - API imgbb", onClose: () => setModals(prev => ({ ...prev, imgbb: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Clé API imgbb"),
@@ -1120,8 +1024,7 @@
             React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, "Enregistrer")
           )
         ),
-
-        // ---- Modale Détail produit ----
+        // Modale Détail produit
         React.createElement(Modal, { isOpen: modals.productDetail, title: "Détail du produit", onClose: () => setModals(prev => ({ ...prev, productDetail: false })) },
           selectedProduct && React.createElement(React.Fragment, null,
             React.createElement("div", { className: "flex flex-col items-center mb-5" },
@@ -1136,15 +1039,9 @@
             React.createElement("div", { className: "flex items-center justify-center gap-4 mb-5" },
               React.createElement("label", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, "Nombre de packs :"),
               React.createElement("div", { className: "flex items-center gap-3" },
-                React.createElement("button", {
-                  onClick: () => setProductQuantity(Math.max(1, productQuantity - 1)),
-                  className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95`
-                }, "-"),
+                React.createElement("button", { onClick: () => setProductQuantity(Math.max(1, productQuantity - 1)), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
                 React.createElement("span", { className: `w-8 text-center font-medium text-[${THEME.colors.text}]` }, productQuantity),
-                React.createElement("button", {
-                  onClick: () => setProductQuantity(productQuantity + 1),
-                  className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95`
-                }, "+")
+                React.createElement("button", { onClick: () => setProductQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
               )
             ),
             React.createElement("div", { className: "flex gap-3" },
@@ -1153,8 +1050,7 @@
             )
           )
         ),
-
-        // ---- MODALE PANIER ----
+        // Modale Panier
         React.createElement(Modal, { isOpen: modals.cart, title: "Mon panier", onClose: () => setModals(prev => ({ ...prev, cart: false })) },
           React.createElement("div", { className: "space-y-4" },
             cart.length === 0 ?
@@ -1187,15 +1083,9 @@
                       showPrices && React.createElement("div", { className: `w-16 text-right text-sm text-[${THEME.colors.secondary}]` }, item.price + " DZD"),
                       showPrices && React.createElement("div", { className: `w-20 text-right text-sm font-medium text-[${THEME.colors.text}] flex items-center justify-end gap-2` },
                         totalItem + " DZD",
-                        React.createElement("button", {
-                          onClick: () => removeFromCart(item.id),
-                          className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 active:scale-90"
-                        }, "✕")
+                        React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 active:scale-90" }, "✕")
                       ),
-                      !showPrices && React.createElement("button", {
-                        onClick: () => removeFromCart(item.id),
-                        className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 ml-2 active:scale-90"
-                      }, "✕")
+                      !showPrices && React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 ml-2 active:scale-90" }, "✕")
                     );
                   })
                 ),
@@ -1205,34 +1095,12 @@
                     React.createElement("span", { className: `text-lg font-bold text-[${THEME.colors.primary}]` }, getTotalPrice() + " DZD")
                   )
                 ),
-                // ---- CHAMPS CLIENT ----
                 React.createElement("div", { className: "space-y-3 mt-4 border-t border-[#3A4A5F] pt-4" },
                   React.createElement("label", { className: "block text-xs font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Informations de livraison"),
-                  React.createElement("input", {
-                    type: "text", placeholder: "Nom complet *",
-                    className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]",
-                    value: clientInfo.nom,
-                    onChange: e => setClientInfo({...clientInfo, nom: e.target.value})
-                  }),
-                  React.createElement("input", {
-                    type: "text", placeholder: "Adresse *",
-                    className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]",
-                    value: clientInfo.adresse,
-                    onChange: e => setClientInfo({...clientInfo, adresse: e.target.value})
-                  }),
-                  React.createElement("input", {
-                    type: "tel", placeholder: "Téléphone *",
-                    className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]",
-                    value: clientInfo.telephone,
-                    onChange: e => setClientInfo({...clientInfo, telephone: e.target.value})
-                  }),
-                  React.createElement("textarea", {
-                    placeholder: "Commentaire (optionnel)",
-                    className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8] resize-none",
-                    rows: 2,
-                    value: clientInfo.commentaire,
-                    onChange: e => setClientInfo({...clientInfo, commentaire: e.target.value})
-                  })
+                  React.createElement("input", { type: "text", placeholder: "Nom complet *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.nom, onChange: e => setClientInfo({...clientInfo, nom: e.target.value}) }),
+                  React.createElement("input", { type: "text", placeholder: "Adresse *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.adresse, onChange: e => setClientInfo({...clientInfo, adresse: e.target.value}) }),
+                  React.createElement("input", { type: "tel", placeholder: "Téléphone *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.telephone, onChange: e => setClientInfo({...clientInfo, telephone: e.target.value}) }),
+                  React.createElement("textarea", { placeholder: "Commentaire (optionnel)", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8] resize-none", rows: 2, value: clientInfo.commentaire, onChange: e => setClientInfo({...clientInfo, commentaire: e.target.value}) })
                 ),
                 React.createElement("div", { className: "flex gap-3 mt-4" },
                   React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "flex-1" }, "Fermer"),
@@ -1241,29 +1109,16 @@
               )
           )
         ),
-
-        // ---- MODALE COMMANDES ----
+        // Modale Commandes
         React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => setModals(prev => ({ ...prev, orders: false })) },
           React.createElement("div", { className: "flex justify-between items-center mb-4" },
             React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg` }, "Commandes"),
-            React.createElement("button", {
-              onClick: () => setModals(prev => ({ ...prev, orders: false })),
-              className: `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}] text-lg transition-colors`
-            }, "✕")
+            React.createElement("button", { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}] text-lg transition-colors` }, "✕")
           ),
           React.createElement("div", { className: `flex gap-2 mb-4 border-b border-[${THEME.colors.border}]` },
-            React.createElement("button", {
-              onClick: () => setOrderTab('received'),
-              className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'received' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}`
-            }, "Reçues"),
-            React.createElement("button", {
-              onClick: () => setOrderTab('processing'),
-              className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'processing' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}`
-            }, "Traitées"),
-            React.createElement("button", {
-              onClick: () => setOrderTab('delivered'),
-              className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'delivered' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}`
-            }, "Livrées")
+            React.createElement("button", { onClick: () => setOrderTab('received'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'received' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Reçues"),
+            React.createElement("button", { onClick: () => setOrderTab('processing'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'processing' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Traitées"),
+            React.createElement("button", { onClick: () => setOrderTab('delivered'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'delivered' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Livrées")
           ),
           orders.filter(order => order.status === orderTab).length === 0 ?
             React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center py-4` }, "Aucune commande dans cet onglet.")
@@ -1301,7 +1156,6 @@
               React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: "mt-4" }, "Fermer")
             )
         ),
-
         // Modale Notifications
         React.createElement(Modal, { isOpen: modals.notifications, title: "Notifications ntfy", onClose: () => setModals(prev => ({ ...prev, notifications: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "NTFY Topic :"),
@@ -1311,8 +1165,7 @@
             React.createElement(Button, { onClick: testNtfy }, "Tester")
           )
         ),
-
-        // ---- MODALE OPTIONS AVANCÉES ----
+        // Modale Options avancées
         React.createElement(Modal, { isOpen: modals.advancedOptions, title: "Options avancées", onClose: () => setModals(prev => ({ ...prev, advancedOptions: false })) },
           React.createElement("div", { className: "flex flex-col gap-3" },
             React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, imgbb: true })); } }, "Banque d'images"),
@@ -1328,10 +1181,7 @@
                   value: logoUrlInput,
                   onChange: e => setLogoUrlInput(e.target.value)
                 }),
-                React.createElement("button", {
-                  onClick: handleLogoUrlSubmit,
-                  className: "px-4 py-3 bg-[#E8F04F] text-[#0E1B2D] rounded-xl font-medium hover:brightness-110 transition whitespace-nowrap"
-                }, "Appliquer URL")
+                React.createElement("button", { onClick: handleLogoUrlSubmit, className: "px-4 py-3 bg-[#E8F04F] text-[#0E1B2D] rounded-xl font-medium hover:brightness-110 transition whitespace-nowrap" }, "Appliquer URL")
               )
             ),
             React.createElement(Button, { variant: "secondary", onClick: () => { handleTitleChange(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Titre"),
@@ -1340,7 +1190,7 @@
         )
       );
 
-      // ---- RENDU PRINCIPAL ----
+      // ----- RENDU PRINCIPAL -----
       if (loading) {
         return React.createElement("div", { className: "fixed inset-0 flex items-center justify-center bg-[#0E1B2D] text-white" },
           React.createElement("div", { className: "text-center" }, "Chargement...")
@@ -1352,22 +1202,13 @@
           React.createElement("div", { className: "flex justify-between items-center mb-6" },
             React.createElement("div", { className: "flex items-center gap-2" },
               logoUrl && React.createElement("img", { src: logoUrl, alt: "Logo", className: "h-[50px] w-auto object-contain" }),
-              React.createElement("button", {
-                onClick: goHome,
-                className: `text-[${THEME.colors.primary}] text-xs font-medium uppercase tracking-wider hover:text-[${THEME.colors.primary}]/80 transition active:scale-95`
-              },
+              React.createElement("button", { onClick: goHome, className: `text-[${THEME.colors.primary}] text-xs font-medium uppercase tracking-wider hover:text-[${THEME.colors.primary}]/80 transition active:scale-95` },
                 currentView === DICT.VIEW.DASHBOARD ? appTitle : '← Retour'
               )
             ),
             React.createElement("div", { className: "flex items-center gap-2" },
-              isAdmin && React.createElement("button", {
-                onClick: togglePrices,
-                className: `w-8 h-8 rounded-full text-xs font-bold border-2 transition-colors flex items-center justify-center active:scale-95 ${showPrices ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `border-[${THEME.colors.border}] text-[${THEME.colors.textMuted}]`}`
-              }, "DZD"),
-              React.createElement("button", {
-                onClick: toggleAdmin,
-                className: `px-3 py-1 text-xs font-medium uppercase rounded-full border transition-colors active:scale-95 ${isAdmin ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `text-[${THEME.colors.textMuted}] border-[${THEME.colors.border}] hover:border-[${THEME.colors.primary}]`}`
-              },
+              isAdmin && React.createElement("button", { onClick: togglePrices, className: `w-8 h-8 rounded-full text-xs font-bold border-2 transition-colors flex items-center justify-center active:scale-95 ${showPrices ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `border-[${THEME.colors.border}] text-[${THEME.colors.textMuted}]`}` }, "DZD"),
+              React.createElement("button", { onClick: toggleAdmin, className: `px-3 py-1 text-xs font-medium uppercase rounded-full border transition-colors active:scale-95 ${isAdmin ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `text-[${THEME.colors.textMuted}] border-[${THEME.colors.border}] hover:border-[${THEME.colors.primary}]`}` },
                 isAdmin ? "Admin" : "Connexion"
               )
             )
@@ -1397,35 +1238,17 @@
             ),
           renderModals()
         ),
-
-        // ---- TOAST ----
+        // Toast
         React.createElement(Toast, { message: toast.message, type: toast.type, onClose: hideToast }),
-
-        // ---- MODALE PIN ----
+        // Modale PIN
         React.createElement(Modal, { isOpen: showPinModal, title: pinMode === 'verify' ? "Code PIN" : "Créer le premier admin", onClose: () => setShowPinModal(false) },
           React.createElement("div", { className: "space-y-4" },
             pinError && React.createElement("p", { className: "text-rose-400 text-sm" }, pinError),
             React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, pinMode === 'verify' ? "Entrez votre code PIN (8 chiffres)" : "Nouveau code PIN (8 chiffres)"),
-            React.createElement("input", {
-              type: "password",
-              inputMode: "numeric",
-              pattern: "[0-9]*",
-              className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-              value: pinInput,
-              onChange: e => setPinInput(e.target.value.replace(/\D/g, '')),
-              placeholder: "8 chiffres minimum"
-            }),
+            React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: pinInput, onChange: e => setPinInput(e.target.value.replace(/\D/g, '')), placeholder: "8 chiffres minimum" }),
             pinMode === 'create' && React.createElement(React.Fragment, null,
               React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1 mt-2` }, "Confirmer le code PIN"),
-              React.createElement("input", {
-                type: "password",
-                inputMode: "numeric",
-                pattern: "[0-9]*",
-                className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-                value: pinConfirm,
-                onChange: e => setPinConfirm(e.target.value.replace(/\D/g, '')),
-                placeholder: "Confirmation"
-              }),
+              React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: pinConfirm, onChange: e => setPinConfirm(e.target.value.replace(/\D/g, '')), placeholder: "Confirmation" }),
               React.createElement("p", { className: "text-xs text-[#3DC59D] mt-1" }, "Le premier admin s'appellera : MEKEIRISHDEV")
             ),
             React.createElement("div", { className: "flex gap-3 mt-4" },
@@ -1434,8 +1257,7 @@
             )
           )
         ),
-
-        // ---- MODALE GESTION DES ADMINS ----
+        // Modale Gestion Admins
         React.createElement(Modal, { isOpen: showManageAdmins, title: "Administrateurs", onClose: () => setShowManageAdmins(false) },
           React.createElement("div", { className: "space-y-4" },
             adminList.length === 0 ?
@@ -1448,105 +1270,55 @@
                       React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, admin.name),
                       React.createElement("span", { className: `text-[${THEME.colors.textMuted}] font-mono text-xs` }, admin.hash.slice(0, 8) + '…')
                     ),
-                    React.createElement("button", {
-                      onClick: () => handleRemoveAdmin(admin.hash, admin.name),
-                      className: "text-rose-400 hover:text-rose-300 text-sm px-2"
-                    }, "✕")
+                    React.createElement("button", { onClick: () => handleRemoveAdmin(admin.hash, admin.name), className: "text-rose-400 hover:text-rose-300 text-sm px-2" }, "✕")
                   )
                 )
               ),
             React.createElement("div", { className: "border-t border-[${THEME.colors.border}] pt-4" },
               React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}] mb-2` }, "Ajouter un nouvel administrateur"),
               React.createElement("div", { className: "flex flex-col gap-2" },
-                React.createElement("input", {
-                  type: "text",
-                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-                  placeholder: "Nom de l'admin",
-                  value: newAdminName,
-                  onChange: e => setNewAdminName(e.target.value)
-                }),
-                React.createElement("input", {
-                  type: "password",
-                  inputMode: "numeric",
-                  pattern: "[0-9]*",
-                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-                  placeholder: "Code PIN (8 chiffres)",
-                  value: pinInput,
-                  onChange: e => setPinInput(e.target.value.replace(/\D/g, ''))
-                }),
-                React.createElement("input", {
-                  type: "password",
-                  inputMode: "numeric",
-                  pattern: "[0-9]*",
-                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-                  placeholder: "Confirmation",
-                  value: pinConfirm,
-                  onChange: e => setPinConfirm(e.target.value.replace(/\D/g, ''))
-                }),
-                React.createElement(Button, {
-                  onClick: async () => {
-                    if (!newAdminName.trim()) { showToast('Veuillez entrer un nom.', 'error'); return; }
-                    if (pinInput.length < 8) { showToast('Le PIN doit comporter au moins 8 chiffres.', 'error'); return; }
-                    if (pinInput !== pinConfirm) { showToast('Les PINs ne correspondent pas.', 'error'); return; }
-                    try {
-                      await addAdminPin(pinInput, newAdminName.trim());
-                      setNewAdminName('');
-                      setPinInput('');
-                      setPinConfirm('');
-                      showToast(`${newAdminName} ajouté avec succès.`, 'success');
-                    } catch (err) {
-                      showToast(err.message, 'error');
-                    }
-                  }
-                }, "Ajouter")
+                React.createElement("input", { type: "text", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, placeholder: "Nom de l'admin", value: newAdminName, onChange: e => setNewAdminName(e.target.value) }),
+                React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, placeholder: "Code PIN (8 chiffres)", value: pinInput, onChange: e => setPinInput(e.target.value.replace(/\D/g, '')) }),
+                React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, placeholder: "Confirmation", value: pinConfirm, onChange: e => setPinConfirm(e.target.value.replace(/\D/g, '')) }),
+                React.createElement(Button, { onClick: async () => {
+                  if (!newAdminName.trim()) { showToast('Veuillez entrer un nom.', 'error'); return; }
+                  if (pinInput.length < 8) { showToast('Le PIN doit comporter au moins 8 chiffres.', 'error'); return; }
+                  if (pinInput !== pinConfirm) { showToast('Les PINs ne correspondent pas.', 'error'); return; }
+                  try {
+                    await addAdminPin(pinInput, newAdminName.trim());
+                    setNewAdminName('');
+                    setPinInput('');
+                    setPinConfirm('');
+                    showToast(`${newAdminName} ajouté avec succès.`, 'success');
+                  } catch (err) { showToast(err.message, 'error'); }
+                } }, "Ajouter")
               )
             ),
             React.createElement(Button, { variant: "secondary", onClick: () => setShowManageAdmins(false), className: "mt-4" }, "Fermer")
           )
         ),
-
-        // ---- MODALE DE CONFIRMATION DE SUPPRESSION ----
+        // Modale confirmation suppression
         React.createElement(Modal, { isOpen: showDeleteConfirmModal, title: "Confirmer la suppression", onClose: () => { setShowDeleteConfirmModal(false); setDeleteTarget(null); setDeleteCode(''); } },
           React.createElement("div", { className: "space-y-4" },
             React.createElement("p", { className: `text-[${THEME.colors.text}]` }, `Supprimer "${deleteTarget?.name}" ?`),
             React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Code de suppression"),
-            React.createElement("input", {
-              type: "password",
-              className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-              value: deleteCode,
-              onChange: e => setDeleteCode(e.target.value),
-              placeholder: "Code de suppression",
-              autoFocus: true
-            }),
+            React.createElement("input", { type: "password", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: deleteCode, onChange: e => setDeleteCode(e.target.value), placeholder: "Code de suppression", autoFocus: true }),
             React.createElement("div", { className: "flex gap-3 mt-4" },
               React.createElement(Button, { variant: "secondary", onClick: () => { setShowDeleteConfirmModal(false); setDeleteTarget(null); setDeleteCode(''); } }, DICT.UI.BTN_CANCEL),
               React.createElement(Button, { onClick: confirmDeleteAdmin }, "Supprimer")
             )
           )
         ),
-
-        // ---- BARRE DE PANIER (bouton Commander) ----
+        // Barre de panier
         React.createElement("div", { className: "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-sm px-4" },
           React.createElement("div", {
-            className: `
-              flex items-center justify-between px-4 py-2 rounded-full
-              bg-[#0E1B2D]/80 backdrop-blur-md
-              border border-white/10
-              shadow-[0_-4px_20px_rgba(0,0,0,0.3)]
-              transition-all duration-200
-              ${cart.length === 0 ? 'opacity-50 grayscale' : ''}
-            `
+            className: `flex items-center justify-between px-4 py-2 rounded-full bg-[#0E1B2D]/80 backdrop-blur-md border border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 ${cart.length === 0 ? 'opacity-50 grayscale' : ''}`
           },
             React.createElement("div", { className: "flex items-center gap-2" },
               React.createElement("span", { className: `text-[${THEME.colors.text}] text-lg` }, "🛒"),
-              cart.length > 0 && React.createElement("span", {
-                className: `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full`
-              }, cart.length)
+              cart.length > 0 && React.createElement("span", { className: `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full` }, cart.length)
             ),
-            React.createElement("button", {
-              onClick: () => setModals(prev => ({ ...prev, cart: true })),
-              className: "flex items-center gap-2 active:scale-95 transition bg-[#E8F04F] text-[#0E1B2D] px-4 py-1.5 rounded-full font-bold text-sm shadow-md"
-            }, "Commander")
+            React.createElement("button", { onClick: () => setModals(prev => ({ ...prev, cart: true })), className: "flex items-center gap-2 active:scale-95 transition bg-[#E8F04F] text-[#0E1B2D] px-4 py-1.5 rounded-full font-bold text-sm shadow-md" }, "Commander")
           )
         )
       );
@@ -1555,11 +1327,9 @@
     window.reactRoot = window.reactRoot || ReactDOM.createRoot(document.getElementById('root'));
     window.reactRoot.render(React.createElement(App, null));
   </script>
-
   <script>
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
   </script>
-
-<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
+  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
 </body>
 </html>
