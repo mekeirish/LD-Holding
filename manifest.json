@@ -1,16 +1,1332 @@
-{
-  "name": "LD-Holding",
-  "short_name": "LD-Holding",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#1a1c20",
-  "theme_color": "#4b6cb7",
-  "icons": [
-    {
-      "src": "icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>PWA App</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <!-- Firebase CDN -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <style>
+    body { margin: 0; padding: 0; background-color: #0E1B2D; font-family: system-ui; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    #root { width: 100%; display: flex; justify-content: center; align-items: center; }
+    ::-webkit-scrollbar { display: none; }
+    input, select, textarea { background-color: #1E2F44; color: #F0F4F8; border-color: #3A4A5F; }
+    input:focus, select:focus, textarea:focus { border-color: #E8F04F; outline: none; }
+    .modal-overlay { animation: fadeIn 0.25s ease-out; }
+    .modal-content { animation: scaleIn 0.25s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-slide-up { animation: slideUp 0.3s ease-out; }
+  </style>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4b6cb7">
+  <link rel="apple-touch-icon" href="icon.png">
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyB6uTZ4iCqNMzL-GeZq6tDgoI_sJj-ZMuo",
+      authDomain: "ld-holding.firebaseapp.com",
+      databaseURL: "https://ld-holding-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "ld-holding",
+      storageBucket: "ld-holding.firebasestorage.app",
+      messagingSenderId: "671138274690",
+      appId: "1:671138274690:web:3428bea30c932307bc039b",
+      measurementId: "G-FB0P7E7BCN"
+    };
+    firebase.initializeApp(firebaseConfig);
+  </script>
+  <script>
+    const THEME = {
+      colors: {
+        background: '#0E1B2D', primary: '#E8F04F', secondary: '#3DC59D',
+        text: '#F0F4F8', textMuted: '#9CA3AF', border: '#3A4A5F',
+        cardBg: '#1A2A3F', inputBg: '#1E2F44', danger: '#EF4444', success: '#3DC59D',
+      },
+      borderRadius: 'rounded-2xl',
+      shadow: 'shadow-xl',
+    };
+
+    const DICT = Object.freeze({
+      VIEW: { DASHBOARD: 'VIEW_DASHBOARD', DETAIL: 'VIEW_DETAIL' },
+      UI: { BTN_CANCEL: 'Annuler', BTN_CONFIRM: 'Confirmer' }
+    });
+
+    const { useState, useEffect, useRef } = React;
+
+    const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
+      const base = "w-full py-4 font-medium rounded-2xl transition-all duration-200 active:scale-[0.98]";
+      const variants = {
+        primary: `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] hover:brightness-110 active:brightness-90`,
+        secondary: `border-2 border-[${THEME.colors.primary}] text-[${THEME.colors.primary}] hover:bg-[${THEME.colors.primary}] hover:text-[${THEME.colors.background}] active:scale-[0.98]`,
+        danger: `bg-[${THEME.colors.secondary}] text-white hover:brightness-110 active:brightness-90`
+      };
+      const disabledClass = disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "";
+      return React.createElement("button", { onClick, disabled, className: `${base} ${variants[variant]} ${className} ${disabledClass}` }, children);
+    };
+
+    const Modal = ({ isOpen, onClose, title, children }) => {
+      if (!isOpen) return null;
+      return React.createElement("div", {
+        className: `fixed inset-0 flex items-center justify-center p-4 z-50 modal-overlay bg-[${THEME.colors.background}]/80 backdrop-blur-sm`
+      }, React.createElement("div", {
+        className: `modal-content w-full max-w-sm p-6 rounded-2xl max-h-[80vh] overflow-y-auto border border-[${THEME.colors.border}] shadow-2xl bg-[${THEME.colors.cardBg}]`
+      }, React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg mb-5` }, title), children));
+    };
+
+    const ImageUpload = ({ onUpload }) => {
+      const handleChange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = event => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const size = 300;
+            canvas.width = canvas.height = size;
+            const ctx = canvas.getContext("2d");
+            const ratio = Math.max(size / img.width, size / img.height);
+            const w = img.width * ratio, h = img.height * ratio;
+            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+            onUpload(canvas.toDataURL("image/jpeg", 0.9));
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      };
+      return React.createElement("input", {
+        type: "file",
+        onChange: handleChange,
+        className: `w-full text-sm text-[${THEME.colors.textMuted}] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-[${THEME.colors.primary}] file:text-[${THEME.colors.background}] hover:file:brightness-110`
+      });
+    };
+
+    const BrandCard = ({ brand, onClick }) =>
+      React.createElement("div", { className: "flex flex-col items-center gap-2" },
+        React.createElement("button", { onClick, className: `w-full aspect-square rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] transition-opacity hover:opacity-80 active:scale-[0.98]` },
+          brand.image ? React.createElement("img", { src: brand.image, className: "w-full h-full object-cover" }) :
+          React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs font-medium` }, "IMAGE")
+        ),
+        React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm text-center` }, brand.name)
+      );
+
+    const ProductCard = ({ product, onClick, showPrices }) =>
+      React.createElement("div", { className: "flex flex-col items-center gap-1 cursor-pointer", onClick },
+        React.createElement("div", { className: `w-full aspect-square rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] transition-opacity hover:opacity-80 active:scale-[0.98]` },
+          product.image ? React.createElement("img", { src: product.image, className: "w-full h-full object-cover" }) :
+          React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs font-medium` }, "PROD")
+        ),
+        React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm text-center` }, product.name),
+        showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}] text-xs` }, "Prix: ", product.price, " DZD") : null,
+        React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "Pack: ", product.qty, " unités")
+      );
+
+    const Toast = ({ message, type, onClose }) => {
+      if (!message) return null;
+      const accentColors = {
+        success: 'border-[#3DC59D]',
+        error: 'border-rose-500',
+        info: 'border-[#E8F04F]'
+      };
+      const icons = { success: '✓', error: '✕', info: 'ℹ' };
+      const textColors = {
+        success: 'text-[#3DC59D]',
+        error: 'text-rose-400',
+        info: 'text-[#E8F04F]'
+      };
+      return React.createElement("div", {
+        className: `fixed bottom-20 left-1/2 -translate-x-1/2 z-[100] max-w-sm w-full p-3 rounded-lg bg-[#0E1B2D]/90 backdrop-blur-xl border border-white/5 shadow-2xl ${accentColors[type] || 'border-white/5'} border-l-4 animate-slide-up`
+      }, React.createElement("div", { className: "flex items-center gap-3" },
+        React.createElement("span", { className: `text-sm font-bold ${textColors[type] || 'text-white'}` }, icons[type] || 'ℹ'),
+        React.createElement("div", { className: "flex-1 text-sm font-light text-white/90" }, message),
+        React.createElement("button", { onClick: onClose, className: "text-white/30 hover:text-white/70 transition-colors text-sm" }, "✕")
+      ));
+    };
+
+    const hashPin = async (pin) => {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(pin);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    };
+
+    const App = () => {
+      const [isAdmin, setIsAdmin] = useState(false);
+      const [showPinModal, setShowPinModal] = useState(false);
+      const [pinInput, setPinInput] = useState('');
+      const [pinConfirm, setPinConfirm] = useState('');
+      const [pinMode, setPinMode] = useState('verify');
+      const [pinError, setPinError] = useState('');
+      const [adminList, setAdminList] = useState([]);
+      const [showManageAdmins, setShowManageAdmins] = useState(false);
+      const [newAdminName, setNewAdminName] = useState('');
+      const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+      const [deleteTarget, setDeleteTarget] = useState(null);
+      const [deleteCode, setDeleteCode] = useState('');
+
+      const [logoUrl, setLogoUrl] = useState(() => localStorage.getItem('app_logo') || null);
+      const [appTitle, setAppTitle] = useState(() => localStorage.getItem('app_title') || 'MARKET HUB');
+      const [brands, setBrands] = useState([]);
+      const [orders, setOrders] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [logoUrlInput, setLogoUrlInput] = useState('');
+      const [clientInfo, setClientInfo] = useState({ nom: '', adresse: '', telephone: '', commentaire: '' });
+
+      const fileInputRef = useRef(null);
+      const imageInputRef = useRef(null);
+      const logoInputRef = useRef(null);
+
+      useEffect(() => {
+        try {
+          const settingsRef = firebase.database().ref('settings');
+          const settingsListener = settingsRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              if (data.logo) setLogoUrl(data.logo);
+              if (data.title) setAppTitle(data.title);
+            }
+            setLoading(false);
+          });
+          return () => settingsRef.off('value', settingsListener);
+        } catch (err) {
+          console.error('Erreur listener settings:', err);
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        try {
+          const brandsRef = firebase.database().ref('brands');
+          const brandsListener = brandsRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              const brandsArray = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+              setBrands(brandsArray);
+            } else {
+              setBrands([]);
+            }
+          });
+          return () => brandsRef.off('value', brandsListener);
+        } catch (err) {
+          console.error('Erreur listener brands:', err);
+        }
+      }, []);
+
+      useEffect(() => {
+        try {
+          const ordersRef = firebase.database().ref('orders');
+          const ordersListener = ordersRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              const ordersArray = Object.keys(data).map(key => {
+                const order = data[key];
+                return {
+                  ...order,
+                  id: key,
+                  items: Array.isArray(order.items) ? order.items : [],
+                  status: order.status || 'received',
+                  client: order.client || { nom: '', adresse: '', telephone: '', commentaire: '' }
+                };
+              });
+              setOrders(ordersArray);
+            } else {
+              setOrders([]);
+            }
+          });
+          return () => ordersRef.off('value', ordersListener);
+        } catch (err) {
+          console.error('Erreur listener orders:', err);
+        }
+      }, []);
+
+      useEffect(() => { if (logoUrl) localStorage.setItem('app_logo', logoUrl); else localStorage.removeItem('app_logo'); }, [logoUrl]);
+      useEffect(() => { localStorage.setItem('app_title', appTitle); }, [appTitle]);
+
+      const [showPrices, setShowPrices] = useState(() => {
+        const saved = localStorage.getItem('show_prices');
+        return saved !== null ? JSON.parse(saved) : true;
+      });
+      const [currentView, setCurrentView] = useState(DICT.VIEW.DASHBOARD);
+      const [selectedBrand, setSelectedBrand] = useState(null);
+      const [isTransitioning, setIsTransitioning] = useState(false);
+
+      const [toast, setToast] = useState({ message: '', type: 'info', visible: false });
+      const toastTimeout = useRef(null);
+      const showToast = (message, type = 'info') => {
+        if (toastTimeout.current) clearTimeout(toastTimeout.current);
+        setToast({ message, type, visible: true });
+        toastTimeout.current = setTimeout(() => setToast({ message: '', type: 'info', visible: false }), 4000);
+      };
+      const hideToast = () => {
+        if (toastTimeout.current) clearTimeout(toastTimeout.current);
+        setToast({ message: '', type: 'info', visible: false });
+      };
+
+      const [modals, setModals] = useState({
+        brand: false, product: false, brandSelect: false, manage: false,
+        imgbb: false, productDetail: false, cart: false, orders: false, notifications: false,
+        advancedOptions: false
+      });
+      const [editingProduct, setEditingProduct] = useState(null);
+      const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
+      const [showDataPanel, setShowDataPanel] = useState(false);
+      const [selectedBrandForData, setSelectedBrandForData] = useState('');
+      const [editingBrandId, setEditingBrandId] = useState(null);
+      const [editingBrandName, setEditingBrandName] = useState('');
+      const [editingBrandImage, setEditingBrandImage] = useState(null);
+      const [confirmDeleteBrandId, setConfirmDeleteBrandId] = useState(null);
+      const [confirmDeleteProduct, setConfirmDeleteProduct] = useState(null);
+      const [selectedProduct, setSelectedProduct] = useState(null);
+      const [productQuantity, setProductQuantity] = useState(1);
+      const [orderTab, setOrderTab] = useState('received');
+
+      const [cart, setCart] = useState(() => {
+        const saved = localStorage.getItem('cart');
+        return saved ? JSON.parse(saved) : [];
+      });
+      useEffect(() => localStorage.setItem('cart', JSON.stringify(cart)), [cart]);
+
+      const [imgbbApiKey, setImgbbApiKey] = useState(() => localStorage.getItem('imgbb_api_key') || '');
+      useEffect(() => localStorage.setItem('imgbb_api_key', imgbbApiKey), [imgbbApiKey]);
+
+      const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('ntfy_topic') || 'ldholdingnotif');
+      useEffect(() => localStorage.setItem('ntfy_topic', ntfyTopic), [ntfyTopic]);
+
+      const fetchAdmins = async () => {
+        try {
+          const snapshot = await firebase.database().ref('admins').once('value');
+          const data = snapshot.val();
+          if (data && Array.isArray(data)) return data.filter(item => item && typeof item === 'object' && item.name && item.hash);
+          return [];
+        } catch (err) { console.error('Erreur chargement admins:', err); return []; }
+      };
+
+      const addAdminPin = async (pin, name = 'MEKEIRISHDEV') => {
+        const hash = await hashPin(pin);
+        const current = await fetchAdmins();
+        if (current.some(a => a.hash === hash)) throw new Error('Ce code PIN existe déjà.');
+        const newList = [...current, { name, hash }];
+        await firebase.database().ref('admins').set(newList);
+        return { name, hash };
+      };
+
+      const removeAdminPin = async (hash) => {
+        const current = await fetchAdmins();
+        const newList = current.filter(a => a.hash !== hash);
+        await firebase.database().ref('admins').set(newList);
+      };
+
+      const uploadToImgbb = async (dataUrl) => {
+        if (!imgbbApiKey) throw new Error('Clé API imgbb manquante');
+        let base64 = dataUrl;
+        if (dataUrl.startsWith('data:')) base64 = dataUrl.split(',')[1];
+        const formData = new FormData();
+        formData.append('key', imgbbApiKey);
+        formData.append('image', base64);
+        const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+        const json = await response.json();
+        if (!json.success) throw new Error(json.error?.message || 'Erreur upload imgbb');
+        return json.data.url;
+      };
+
+      const handleFormImageUpload = (setter, state) => async (dataUrl) => {
+        try {
+          const url = await uploadToImgbb(dataUrl);
+          setter({ ...state, image: url });
+          showToast('Image uploadée avec succès.', 'success');
+        } catch (err) { console.error(err); showToast('Erreur upload image: ' + err.message, 'error'); }
+      };
+
+      const handleLogoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                const maxWidth = 200;
+                const canvas = document.createElement("canvas");
+                let width = img.width, height = img.height;
+                if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL("image/png"));
+              };
+              img.onerror = () => reject(new Error("Erreur chargement image"));
+              img.src = event.target.result;
+            };
+            reader.onerror = () => reject(new Error("Erreur lecture fichier"));
+            reader.readAsDataURL(file);
+          });
+          setLogoUrl(dataUrl);
+          showToast('Logo mis à jour localement.', 'success');
+          let finalUrl = dataUrl;
+          if (imgbbApiKey) {
+            try {
+              const url = await uploadToImgbb(dataUrl);
+              finalUrl = url;
+              showToast('Logo uploadé sur imgbb.', 'success');
+            } catch (uploadErr) {
+              console.error('Upload imgbb échoué, reste en local:', uploadErr);
+              showToast('Logo stocké localement (upload imgbb échoué).', 'error');
+            }
+          } else {
+            showToast('Aucune clé API imgbb, logo stocké localement.', 'info');
+          }
+          await firebase.database().ref('settings').update({ logo: finalUrl });
+        } catch (err) {
+          console.error(err);
+          showToast('Erreur lors du traitement de l\'image: ' + err.message, 'error');
+        }
+        e.target.value = '';
+      };
+
+      const handleLogoUrlSubmit = async () => {
+        const url = logoUrlInput.trim();
+        if (!url) { showToast('Veuillez entrer une URL valide.', 'error'); return; }
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          showToast('L\'URL doit commencer par http:// ou https://', 'error');
+          return;
+        }
+        try {
+          setLogoUrl(url);
+          await firebase.database().ref('settings').update({ logo: url });
+          setLogoUrlInput('');
+          showToast('Logo mis à jour avec succès.', 'success');
+        } catch (err) { console.error(err); showToast('Erreur lors de la mise à jour du logo: ' + err.message, 'error'); }
+      };
+
+      const handleTitleChange = async () => {
+        const newTitle = prompt('Entrez le nouveau titre :', appTitle);
+        if (newTitle !== null && newTitle.trim() !== '') {
+          const title = newTitle.trim();
+          setAppTitle(title);
+          await firebase.database().ref('settings').update({ title });
+          showToast('Titre mis à jour.', 'success');
+        } else if (newTitle !== null && newTitle.trim() === '') {
+          showToast('Le titre ne peut pas être vide.', 'error');
+        }
+      };
+
+      const openPinModal = async (mode = 'verify') => {
+        try {
+          const admins = await fetchAdmins();
+          setAdminList(admins);
+          if (admins.length === 0 && mode === 'verify') setPinMode('create');
+          else setPinMode(mode);
+          setPinInput('');
+          setPinConfirm('');
+          setPinError('');
+          setShowPinModal(true);
+        } catch (err) { console.error('Erreur openPinModal:', err); showToast('Erreur lors de la vérification du PIN.', 'error'); }
+      };
+
+      const handlePinSubmit = async () => {
+        try {
+          const admins = await fetchAdmins();
+          setAdminList(admins);
+          if (pinMode === 'verify') {
+            if (admins.length === 0) {
+              setPinMode('create');
+              setPinError('Aucun admin existant. Veuillez créer le premier code PIN.');
+              return;
+            }
+            const inputHash = await hashPin(pinInput);
+            if (admins.some(a => a.hash === inputHash)) {
+              setIsAdmin(true);
+              setCurrentView(DICT.VIEW.DASHBOARD);
+              setSelectedBrand(null);
+              setShowPinModal(false);
+              setPinInput('');
+              showToast('Mode administrateur activé.', 'success');
+            } else {
+              setPinError('Code PIN incorrect.');
+            }
+          } else if (pinMode === 'create') {
+            if (pinInput.length < 8) { setPinError('Le PIN doit comporter au moins 8 chiffres.'); return; }
+            if (pinInput !== pinConfirm) { setPinError('Les PINs ne correspondent pas.'); return; }
+            try {
+              await addAdminPin(pinInput, 'MEKEIRISHDEV');
+              setIsAdmin(true);
+              setCurrentView(DICT.VIEW.DASHBOARD);
+              setSelectedBrand(null);
+              setShowPinModal(false);
+              setPinInput('');
+              setPinConfirm('');
+              showToast('Premier admin créé (MEKEIRISHDEV).', 'success');
+            } catch (err) { setPinError(err.message); }
+          }
+        } catch (err) {
+          console.error('Erreur handlePinSubmit:', err);
+          setPinError('Erreur lors de la vérification du PIN : ' + (err.message || 'Erreur inconnue'));
+          showToast('Erreur lors de la vérification du PIN.', 'error');
+        }
+      };
+
+      const toggleAdmin = () => {
+        if (isAdmin) { setIsAdmin(false); showToast('Mode administrateur désactivé.', 'info'); }
+        else openPinModal('verify');
+      };
+
+      const openManageAdmins = () => {
+        fetchAdmins().then(setAdminList).catch(err => { console.error('Erreur chargement admins:', err); showToast('Erreur lors du chargement des administrateurs.', 'error'); });
+        setShowManageAdmins(true);
+        setModals(prev => ({ ...prev, advancedOptions: false }));
+      };
+
+      const handleRemoveAdmin = (hash, name) => {
+        setDeleteTarget({ hash, name });
+        setDeleteCode('');
+        setShowDeleteConfirmModal(true);
+      };
+
+      const confirmDeleteAdmin = async () => {
+        if (deleteCode === '1747') {
+          await removeAdminPin(deleteTarget.hash);
+          showToast(`${deleteTarget.name} supprimé.`, 'info');
+          const admins = await fetchAdmins();
+          if (admins.length === 0) setIsAdmin(false);
+          setShowDeleteConfirmModal(false);
+          setDeleteTarget(null);
+          setDeleteCode('');
+        } else {
+          showToast('Code incorrect, suppression annulée.', 'error');
+          setShowDeleteConfirmModal(false);
+          setDeleteTarget(null);
+          setDeleteCode('');
+        }
+      };
+
+      const [newBrand, setNewBrand] = useState({ name: "", image: null });
+      const addBrand = async () => {
+        if (!newBrand.name) { showToast("Veuillez entrer un nom de marque.", "error"); return; }
+        try {
+          const brandData = { ...newBrand, products: [] };
+          await firebase.database().ref('brands').push(brandData);
+          setNewBrand({ name: "", image: null });
+          setModals(prev => ({ ...prev, brand: false }));
+          showToast("Marque ajoutée avec succès.", "success");
+        } catch (err) { console.error('Erreur addBrand:', err); showToast('Erreur lors de l\'ajout de la marque.', 'error'); }
+      };
+
+      const saveBrandEdit = async () => {
+        if (!editingBrandId) return;
+        try {
+          const updated = { name: editingBrandName, image: editingBrandImage };
+          await firebase.database().ref('brands').child(editingBrandId).update(updated);
+          cancelEditBrand();
+          showToast("Marque modifiée avec succès.", "success");
+        } catch (err) { console.error('Erreur saveBrandEdit:', err); showToast('Erreur lors de la modification de la marque.', 'error'); }
+      };
+
+      const deleteBrand = async () => {
+        if (!confirmDeleteBrandId) return;
+        try {
+          await firebase.database().ref('brands').child(confirmDeleteBrandId).remove();
+          setConfirmDeleteBrandId(null);
+          if (manageSelectedBrand === confirmDeleteBrandId) setManageSelectedBrand(null);
+          showToast("Marque supprimée.", "success");
+        } catch (err) { console.error('Erreur deleteBrand:', err); showToast('Erreur lors de la suppression de la marque.', 'error'); }
+      };
+
+      const [newProduct, setNewProduct] = useState({ name: "", qty: "", price: "", image: null, brandId: null });
+      const addProduct = async () => {
+        if (!newProduct.name || !newProduct.brandId) { showToast("Veuillez remplir tous les champs.", "error"); return; }
+        try {
+          const product = { id: Date.now(), name: newProduct.name, qty: Number(newProduct.qty), price: Number(newProduct.price), image: newProduct.image || null, hidden: false };
+          const brand = brands.find(b => b.id === newProduct.brandId);
+          if (!brand) return;
+          const updatedProducts = [...brand.products, product];
+          await firebase.database().ref('brands').child(newProduct.brandId).update({ products: updatedProducts });
+          setNewProduct({ name: "", qty: "", price: "", image: null, brandId: null });
+          setModals(prev => ({ ...prev, product: false }));
+          showToast("Produit ajouté avec succès.", "success");
+        } catch (err) { console.error('Erreur addProduct:', err); showToast('Erreur lors de l\'ajout du produit.', 'error'); }
+      };
+
+      const saveProductEdit = async () => {
+        if (!editingProduct) return;
+        const brand = brands.find(b => b.products.some(p => p.id === editingProduct.id));
+        if (!brand) return;
+        try {
+          const updatedProducts = brand.products.map(p =>
+            p.id === editingProduct.id ? { ...editingProduct, qty: Number(editingProduct.qty), price: Number(editingProduct.price) } : p
+          );
+          await firebase.database().ref('brands').child(brand.id).update({ products: updatedProducts });
+          setEditingProduct(null);
+          showToast("Produit modifié avec succès.", "success");
+        } catch (err) { console.error('Erreur saveProductEdit:', err); showToast('Erreur lors de la modification du produit.', 'error'); }
+      };
+
+      const deleteProduct = async () => {
+        if (!confirmDeleteProduct) return;
+        const { brandId, productId } = confirmDeleteProduct;
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+        try {
+          const updatedProducts = brand.products.filter(p => p.id !== productId);
+          await firebase.database().ref('brands').child(brandId).update({ products: updatedProducts });
+          setConfirmDeleteProduct(null);
+          showToast("Produit supprimé.", "success");
+        } catch (err) { console.error('Erreur deleteProduct:', err); showToast('Erreur lors de la suppression du produit.', 'error'); }
+      };
+
+      const toggleProductVisibility = async (brandId, productId) => {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+        try {
+          const updatedProducts = brand.products.map(p => p.id === productId ? { ...p, hidden: !p.hidden } : p);
+          await firebase.database().ref('brands').child(brandId).update({ products: updatedProducts });
+        } catch (err) { console.error('Erreur toggleProductVisibility:', err); showToast('Erreur lors du changement de visibilité.', 'error'); }
+      };
+
+      const validateOrder = async () => {
+        if (cart.length === 0) { showToast("Votre panier est vide.", "error"); return; }
+        if (!clientInfo.nom.trim()) { showToast("Veuillez entrer votre nom.", "error"); return; }
+        if (!clientInfo.adresse.trim()) { showToast("Veuillez entrer votre adresse.", "error"); return; }
+        if (!clientInfo.telephone.trim()) { showToast("Veuillez entrer votre téléphone.", "error"); return; }
+        const total = cart.reduce((sum, item) => sum + item.quantity * item.price * item.packQty, 0);
+        const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+        const newOrder = {
+          date: new Date().toLocaleString(),
+          items: cart.map(item => ({ ...item })),
+          total,
+          status: 'received',
+          client: { ...clientInfo }
+        };
+        try {
+          await firebase.database().ref('orders').push(newOrder);
+          setCart([]);
+          setClientInfo({ nom: '', adresse: '', telephone: '', commentaire: '' });
+          setModals(prev => ({ ...prev, cart: false }));
+          sendNtfy(totalItems, total);
+        } catch (err) { console.error('Erreur validateOrder:', err); showToast('Erreur lors de la validation de la commande.', 'error'); }
+      };
+
+      const handleProcess = async (orderId) => {
+        try {
+          await firebase.database().ref('orders').child(orderId).update({ status: 'processing' });
+          showToast("Commande traitée.", "success");
+        } catch (err) { console.error('Erreur handleProcess:', err); showToast('Erreur lors du traitement de la commande.', 'error'); }
+      };
+
+      const handleDeliver = async (orderId) => {
+        try {
+          await firebase.database().ref('orders').child(orderId).update({ status: 'delivered' });
+          showToast("Commande livrée.", "success");
+        } catch (err) { console.error('Erreur handleDeliver:', err); showToast('Erreur lors de la livraison de la commande.', 'error'); }
+      };
+
+      const handleCancelOrder = async (orderId) => {
+        try {
+          await firebase.database().ref('orders').child(orderId).remove();
+          showToast("Commande annulée.", "info");
+        } catch (err) { console.error('Erreur handleCancelOrder:', err); showToast('Erreur lors de l\'annulation de la commande.', 'error'); }
+      };
+
+      useEffect(() => {
+        const handlePopState = (event) => {
+          if (event.state && event.state.view === 'DETAIL') {
+            setCurrentView(DICT.VIEW.DASHBOARD);
+            setSelectedBrand(null);
+          } else {
+            history.pushState({ view: 'DASHBOARD' }, '', window.location.href);
+            setCurrentView(DICT.VIEW.DASHBOARD);
+            setSelectedBrand(null);
+          }
+        };
+        window.addEventListener('popstate', handlePopState);
+        history.replaceState({ view: 'DASHBOARD' }, '', window.location.href);
+        return () => window.removeEventListener('popstate', handlePopState);
+      }, []);
+
+      const openBrand = brand => {
+        setIsTransitioning(true);
+        setTimeout(() => { 
+          setSelectedBrand(brand); 
+          setCurrentView(DICT.VIEW.DETAIL); 
+          setIsTransitioning(false); 
+          history.pushState({ view: 'DETAIL', brandId: brand.id }, '', '');
+        }, 300);
+      };
+
+      const goHome = () => {
+        setIsTransitioning(true);
+        setTimeout(() => { 
+          setCurrentView(DICT.VIEW.DASHBOARD); 
+          setSelectedBrand(null);
+          setIsTransitioning(false); 
+          history.replaceState({ view: 'DASHBOARD' }, '', window.location.href);
+        }, 300);
+      };
+
+      const openProductDetail = (product, brand) => {
+        setSelectedProduct({ ...product, brandName: brand.name, brandId: brand.id });
+        setProductQuantity(1);
+        setModals(prev => ({ ...prev, productDetail: true }));
+      };
+
+      const addToCart = () => {
+        if (!selectedProduct) return;
+        const existing = cart.find(item => item.productId === selectedProduct.id && item.brandId === selectedProduct.brandId);
+        if (existing) {
+          setCart(cart.map(item =>
+            item.productId === selectedProduct.id && item.brandId === selectedProduct.brandId
+              ? { ...item, quantity: item.quantity + productQuantity }
+              : item
+          ));
+        } else {
+          setCart([...cart, {
+            id: Date.now(),
+            brandId: selectedProduct.brandId,
+            productId: selectedProduct.id,
+            name: selectedProduct.name,
+            price: selectedProduct.price,
+            packQty: selectedProduct.qty,
+            quantity: productQuantity
+          }]);
+        }
+        setModals(prev => ({ ...prev, productDetail: false }));
+        showToast(`${selectedProduct.name} ajouté au panier.`, "success");
+      };
+
+      const removeFromCart = id => {
+        setCart(cart.filter(item => item.id !== id));
+        showToast("Article retiré du panier.", "info");
+      };
+
+      const getTotalCartItems = () => cart.reduce((sum, item) => sum + item.quantity, 0);
+      const getTotalPrice = () => cart.reduce((sum, item) => sum + item.quantity * item.price * item.packQty, 0);
+
+      const sendNtfy = (totalItems, total) => {
+        const topic = ntfyTopic || 'ldholdingnotif';
+        const url = new URL(`https://ntfy.sh/${topic}`);
+        url.searchParams.append('ta', 'package');
+        url.searchParams.append('po', '3');
+        url.searchParams.append('x', window.location.href);
+        const message = `📦 Nouvelle Commande !\nNouvelle commande de ${totalItems} articles, total : ${total} DZD.`;
+        fetch(url, { method: 'POST', body: message })
+          .then(response => {
+            const successMsg = showPrices ? `✅ Commande validée ! ${totalItems} article(s) - ${total} DZD.` : `✅ Commande validée ! ${totalItems} article(s).`;
+            if (response.ok) showToast(successMsg, "success");
+            else showToast(`❌ Erreur ${response.status}: notification non envoyée.`, "error");
+          })
+          .catch(() => showToast("❌ Erreur réseau. Vérifie ta connexion.", "error"));
+      };
+
+      const testNtfy = () => {
+        const topic = ntfyTopic || 'ldholdingnotif';
+        const url = new URL(`https://ntfy.sh/${topic}`);
+        url.searchParams.append('ta', 'test');
+        url.searchParams.append('po', '3');
+        const message = `🧪 Test ntfy\nTest depuis l'application.`;
+        fetch(url, { method: 'POST', body: message })
+          .then(response => {
+            if (response.ok) showToast(`✅ Test réussi sur le topic "${topic}" !`, "success");
+            else showToast(`❌ Erreur ${response.status} sur le topic "${topic}".`, "error");
+          })
+          .catch(() => showToast(`❌ Erreur réseau sur le topic "${topic}".`, "error"));
+      };
+
+      const togglePrices = () => {
+        setShowPrices(prev => !prev);
+        showToast(showPrices ? "Prix masqués." : "Prix affichés.", "info");
+      };
+
+      const exportData = () => {
+        let products = [];
+        if (selectedBrandForData) {
+          const brand = brands.find(b => b.id === selectedBrandForData);
+          if (brand) {
+            const prods = brand.products || [];
+            products = prods.map(p => ({ Nom: p.name, Prix: p.price, Pack: p.qty }));
+          }
+        } else {
+          brands.forEach(b => {
+            const prods = b.products || [];
+            prods.forEach(p => products.push({ Nom: p.name, Prix: p.price, Pack: p.qty }));
+          });
+        }
+        if (products.length === 0) { showToast("Aucune donnée à exporter.", "error"); return; }
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(products);
+        XLSX.utils.book_append_sheet(wb, ws, "Produits");
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], { type: 'application/octet-stream' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `export_produits_${new Date().toISOString().slice(0,10)}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        showToast("Exportation réussie !", "success");
+      };
+
+      const handleImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!selectedBrandForData) { showToast("Veuillez sélectionner une marque.", "error"); return; }
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+            const requiredColumns = ['Nom', 'Prix', 'Pack'];
+            const headers = Object.keys(jsonData[0] || {});
+            if (!requiredColumns.every(col => headers.includes(col))) {
+              showToast("Le fichier doit contenir les colonnes : Nom, Prix, Pack.", "error");
+              return;
+            }
+            const newProducts = jsonData.map(row => ({
+              id: Date.now() + Math.random(),
+              name: String(row.Nom || '').trim(),
+              price: Number(row.Prix) || 0,
+              qty: Number(row.Pack) || 0,
+              image: null,
+              hidden: false
+            })).filter(p => p.name !== '');
+            if (newProducts.length === 0) { showToast("Aucun produit valide.", "error"); return; }
+            const brand = brands.find(b => b.id === selectedBrandForData);
+            if (brand) {
+              await firebase.database().ref('brands').child(selectedBrandForData).update({ products: newProducts });
+              showToast(`${newProducts.length} produits importés.`, "success");
+            } else {
+              showToast("Marque introuvable.", "error");
+            }
+          } catch (err) { console.error(err); showToast("Erreur lors de la lecture du fichier.", "error"); }
+        };
+        reader.readAsArrayBuffer(file);
+        e.target.value = '';
+      };
+
+      const handleAddImages = async (e) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        if (!selectedBrandForData) { showToast("Veuillez sélectionner une marque.", "error"); return; }
+        const brand = brands.find(b => b.id === selectedBrandForData);
+        if (!brand) { showToast("Marque introuvable.", "error"); return; }
+        let updatedProducts = [...(brand.products || [])];
+        let count = 0;
+        const normalize = (str) => str.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+        const productMap = {};
+        updatedProducts.forEach((p, idx) => { const key = normalize(p.name); if (key) productMap[key] = idx; });
+        const processImage = (file) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement("canvas");
+              const size = 300;
+              canvas.width = canvas.height = size;
+              const ctx = canvas.getContext("2d");
+              const ratio = Math.max(size / img.width, size / img.height);
+              const w = img.width * ratio, h = img.height * ratio;
+              ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+              resolve(canvas.toDataURL("image/jpeg", 0.9));
+            };
+            img.onerror = () => reject(new Error("Erreur chargement image"));
+            img.src = event.target.result;
+          };
+          reader.onerror = () => reject(new Error("Erreur lecture fichier"));
+          reader.readAsDataURL(file);
+        });
+        for (const file of files) {
+          const nameWithoutExt = file.name.replace(/\.[^.]+$/, '').trim();
+          const normalizedFileName = normalize(nameWithoutExt);
+          const productIndex = productMap[normalizedFileName];
+          if (productIndex !== undefined) {
+            try {
+              const dataUrl = await processImage(file);
+              const finalUrl = await uploadToImgbb(dataUrl);
+              updatedProducts[productIndex] = { ...updatedProducts[productIndex], image: finalUrl };
+              count++;
+            } catch (err) { console.error('Erreur upload image:', file.name, err); showToast(`Erreur pour ${file.name}: ${err.message}`, 'error'); }
+          }
+        }
+        if (count > 0) {
+          try {
+            await firebase.database().ref('brands').child(selectedBrandForData).update({ products: updatedProducts });
+            showToast(`${count} image(s) associée(s).`, "success");
+          } catch (err) { console.error('Erreur mise à jour images:', err); showToast('Erreur lors de la mise à jour des images.', 'error'); }
+        } else {
+          showToast("Aucune image associée (vérifiez les noms).", "error");
+        }
+        e.target.value = '';
+      };
+
+      const startEditBrand = brand => {
+        setEditingBrandId(brand.id);
+        setEditingBrandName(brand.name);
+        setEditingBrandImage(brand.image);
+      };
+      const cancelEditBrand = () => {
+        setEditingBrandId(null);
+        setEditingBrandName('');
+        setEditingBrandImage(null);
+      };
+      const confirmDeleteBrand = id => setConfirmDeleteBrandId(id);
+      const cancelDeleteBrand = () => setConfirmDeleteBrandId(null);
+      const triggerConfirmDeleteProduct = (brandId, productId) => setConfirmDeleteProduct({ brandId, productId });
+      const cancelDeleteProduct = () => setConfirmDeleteProduct(null);
+
+      // ----- RENDU DES MODALES (COMPLET) -----
+      const renderModals = () => React.createElement(React.Fragment, null,
+        React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
+          React.createElement("input", {
+            type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
+            value: newBrand.name, onChange: e => setNewBrand({ ...newBrand, name: e.target.value })
+          }),
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Image"),
+          React.createElement(ImageUpload, { onUpload: handleFormImageUpload(setNewBrand, newBrand) }),
+          React.createElement("div", { className: "flex gap-3 mt-4" },
+            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brand: false })) }, DICT.UI.BTN_CANCEL),
+            React.createElement(Button, { onClick: addBrand }, "Créer")
+          )
+        ),
+        React.createElement(Modal, { isOpen: modals.manage, title: "Gestion", onClose: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } },
+          !showDataPanel ?
+            React.createElement(React.Fragment, null,
+              brands.map(b => React.createElement("div", { key: b.id, className: "mb-3" },
+                React.createElement("button", {
+                  onClick: () => setManageSelectedBrand(manageSelectedBrand === b.id ? null : b.id),
+                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl text-left font-medium text-[${THEME.colors.text}] hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}]`
+                }, b.name),
+                manageSelectedBrand === b.id && React.createElement("div", { className: "ml-2 mt-2 space-y-2" },
+                  React.createElement("div", { className: "flex gap-2" },
+                    React.createElement("button", { onClick: () => startEditBrand(b), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Modifier"),
+                    React.createElement("button", { onClick: () => confirmDeleteBrand(b.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Supprimer")
+                  ),
+                  editingBrandId === b.id && React.createElement("div", { className: `p-4 bg-[${THEME.colors.inputBg}] rounded-xl space-y-2 border border-[${THEME.colors.border}]` },
+                    React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
+                    React.createElement("input", { type: "text", value: editingBrandName, onChange: e => setEditingBrandName(e.target.value), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                    React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Image"),
+                    React.createElement(ImageUpload, { onUpload: async (dataUrl) => { try { const url = await uploadToImgbb(dataUrl); setEditingBrandImage(url); showToast('Image uploadée.', 'success'); } catch (e) { showToast('Erreur upload: '+e.message, 'error'); } } }),
+                    React.createElement("div", { className: "flex gap-2 pt-2" },
+                      React.createElement("button", { onClick: cancelEditBrand, className: "text-sm bg-gray-600 text-white px-4 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Annuler"),
+                      React.createElement("button", { onClick: saveBrandEdit, className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Enregistrer")
+                    )
+                  ),
+                  confirmDeleteBrandId === b.id && React.createElement("div", { className: "p-3 bg-rose-500/20 rounded-xl flex items-center gap-3 border border-rose-500" },
+                    React.createElement("span", { className: "text-sm text-rose-300" }, "Confirmer ?"),
+                    React.createElement("button", { onClick: deleteBrand, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
+                    React.createElement("button", { onClick: cancelDeleteBrand, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
+                  ),
+                  (b.products || []).map(p => React.createElement("div", { key: p.id, className: "flex items-center gap-2 mt-2" },
+                    React.createElement("button", {
+                      onClick: () => toggleProductVisibility(b.id, p.id),
+                      className: `w-6 h-6 rounded border-2 flex items-center justify-center text-xs font-bold transition-colors ${p.hidden ? `border-[${THEME.colors.border}] bg-gray-700 text-gray-400` : `border-[${THEME.colors.primary}] bg-[${THEME.colors.primary}]/20 text-[${THEME.colors.primary}]`}`,
+                      title: p.hidden ? "Masqué" : "Visible"
+                    }, p.hidden ? "✖" : "✔"),
+                    React.createElement("button", { onClick: () => setEditingProduct(editingProduct?.id === p.id ? null : p), className: `flex-1 p-2 bg-[${THEME.colors.inputBg}] text-[${THEME.colors.text}] text-sm rounded-lg text-left hover:bg-[${THEME.colors.cardBg}] transition` }, p.name),
+                    React.createElement("button", { onClick: () => triggerConfirmDeleteProduct(b.id, p.id), className: "text-rose-400 font-medium text-sm px-2" }, "×"),
+                    editingProduct?.id === p.id && React.createElement("div", { className: `p-4 mt-2 bg-[${THEME.colors.inputBg}] rounded-xl w-full space-y-2 border border-[${THEME.colors.border}]` },
+                      React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
+                      React.createElement("input", { type: "text", value: editingProduct.name, onChange: e => setEditingProduct({ ...editingProduct, name: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                      React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Pack"),
+                      React.createElement("input", { type: "number", value: editingProduct.qty, onChange: e => setEditingProduct({ ...editingProduct, qty: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                      React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Prix unitaire (DZD)"),
+                      React.createElement("input", { type: "number", value: editingProduct.price, onChange: e => setEditingProduct({ ...editingProduct, price: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                      React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Image"),
+                      React.createElement(ImageUpload, { onUpload: async (dataUrl) => { try { const url = await uploadToImgbb(dataUrl); setEditingProduct({ ...editingProduct, image: url }); showToast('Image uploadée.', 'success'); } catch (e) { showToast('Erreur upload: '+e.message, 'error'); } } }),
+                      React.createElement("div", { className: "flex gap-2 pt-2" },
+                        React.createElement("button", { onClick: () => setEditingProduct(null), className: "text-sm bg-gray-600 text-white px-4 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, DICT.UI.BTN_CANCEL),
+                        React.createElement("button", { onClick: saveProductEdit, className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Enregistrer")
+                      )
+                    ),
+                    confirmDeleteProduct && confirmDeleteProduct.brandId === b.id && confirmDeleteProduct.productId === p.id && React.createElement("div", { className: "flex items-center gap-2 mt-1 bg-rose-500/20 p-2 rounded-xl border border-rose-500" },
+                      React.createElement("span", { className: "text-sm text-rose-300" }, "Confirmer ?"),
+                      React.createElement("button", { onClick: deleteProduct, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
+                      React.createElement("button", { onClick: cancelDeleteProduct, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
+                    )
+                  ))
+                )
+              )),
+              React.createElement("div", { className: "flex gap-3 mt-4" },
+                React.createElement(Button, { onClick: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } }, "Fermer"),
+                React.createElement(Button, { variant: "secondary", onClick: () => setShowDataPanel(true) }, "Données")
+              )
+            )
+          :
+            React.createElement(React.Fragment, null,
+              React.createElement("div", { className: "mb-4" },
+                React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Sélectionner une marque"),
+                React.createElement("select", {
+                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
+                  value: selectedBrandForData,
+                  onChange: e => setSelectedBrandForData(e.target.value)
+                },
+                  React.createElement("option", { value: "" }, "-- Toutes les marques --"),
+                  brands.map(b => React.createElement("option", { key: b.id, value: b.id }, b.name))
+                )
+              ),
+              React.createElement("div", { className: "flex flex-col gap-3" },
+                React.createElement(Button, { variant: "secondary", onClick: () => fileInputRef.current.click(), disabled: !selectedBrandForData }, "Importer"),
+                React.createElement("input", { type: "file", ref: fileInputRef, accept: ".xlsx,.xls", onChange: handleImport, className: "hidden" }),
+                React.createElement(Button, { variant: "secondary", onClick: exportData }, "Exporter"),
+                React.createElement(Button, { variant: "secondary", onClick: () => imageInputRef.current.click(), disabled: !selectedBrandForData }, "Ajouter les images"),
+                React.createElement("input", { type: "file", ref: imageInputRef, accept: "image/*", multiple: true, onChange: handleAddImages, className: "hidden" })
+              ),
+              React.createElement(Button, { variant: "secondary", onClick: () => { setShowDataPanel(false); setSelectedBrandForData(''); }, className: "mt-4" }, "Retour")
+            )
+        ),
+        React.createElement(Modal, { isOpen: modals.brandSelect, title: "Choisir Marque", onClose: () => setModals(prev => ({ ...prev, brandSelect: false })) },
+          React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" },
+            brands.map(b => React.createElement("button", {
+              key: b.id,
+              onClick: () => { setNewProduct({ ...newProduct, brandId: b.id }); setModals({ brandSelect: false, product: true, brand: false, manage: false }); },
+              className: `p-3 bg-[${THEME.colors.inputBg}] rounded-xl text-[${THEME.colors.text}] hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}]`
+            }, b.name))
+          ),
+          React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brandSelect: false })) }, DICT.UI.BTN_CANCEL)
+        ),
+        React.createElement(Modal, { isOpen: modals.product, title: "Nouveau Produit", onClose: () => setModals(prev => ({ ...prev, product: false })) },
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
+          React.createElement("input", { type: "text", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, name: e.target.value }) }),
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Pack"),
+          React.createElement("input", { type: "number", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, qty: e.target.value }) }),
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Prix unitaire (DZD)"),
+          React.createElement("input", { type: "number", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, price: e.target.value }) }),
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Image"),
+          React.createElement(ImageUpload, { onUpload: handleFormImageUpload(setNewProduct, newProduct) }),
+          React.createElement("div", { className: "flex gap-3 mt-4" },
+            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, product: false })) }, DICT.UI.BTN_CANCEL),
+            React.createElement(Button, { onClick: addProduct }, "Ajouter")
+          )
+        ),
+        React.createElement(Modal, { isOpen: modals.imgbb, title: "Banque d'images - API imgbb", onClose: () => setModals(prev => ({ ...prev, imgbb: false })) },
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Clé API imgbb"),
+          React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: imgbbApiKey, onChange: e => setImgbbApiKey(e.target.value), placeholder: "Entrez votre clé API" }),
+          React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}] mb-4` }, "Les images seront hébergées sur imgbb."),
+          React.createElement("div", { className: "flex gap-3" },
+            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, DICT.UI.BTN_CANCEL),
+            React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, "Enregistrer")
+          )
+        ),
+        React.createElement(Modal, { isOpen: modals.productDetail, title: "Détail du produit", onClose: () => setModals(prev => ({ ...prev, productDetail: false })) },
+          selectedProduct && React.createElement(React.Fragment, null,
+            React.createElement("div", { className: "flex flex-col items-center mb-5" },
+              React.createElement("div", { className: `w-48 h-48 rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] mb-3` },
+                selectedProduct.image ? React.createElement("img", { src: selectedProduct.image, className: "w-full h-full object-cover" }) : React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "IMAGE")
+              ),
+              React.createElement("h3", { className: `text-lg font-semibold text-[${THEME.colors.primary}]` }, selectedProduct.name),
+              React.createElement("p", { className: `text-sm text-[${THEME.colors.text}]` }, "Marque : ", selectedProduct.brandName),
+              showPrices && React.createElement("p", { className: `text-sm text-[${THEME.colors.secondary}]` }, "Prix unitaire : ", selectedProduct.price, " DZD"),
+              React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}]` }, "Contenu du pack : ", selectedProduct.qty, " unités")
+            ),
+            React.createElement("div", { className: "flex items-center justify-center gap-4 mb-5" },
+              React.createElement("label", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, "Nombre de packs :"),
+              React.createElement("div", { className: "flex items-center gap-3" },
+                React.createElement("button", { onClick: () => setProductQuantity(Math.max(1, productQuantity - 1)), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
+                React.createElement("span", { className: `w-8 text-center font-medium text-[${THEME.colors.text}]` }, productQuantity),
+                React.createElement("button", { onClick: () => setProductQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
+              )
+            ),
+            React.createElement("div", { className: "flex gap-3" },
+              React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, productDetail: false })) }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: addToCart }, "Ajouter au panier")
+            )
+          )
+        ),
+        React.createElement(Modal, { isOpen: modals.cart, title: "Mon panier", onClose: () => setModals(prev => ({ ...prev, cart: false })) },
+          React.createElement("div", { className: "space-y-4" },
+            cart.length === 0 ?
+              React.createElement(React.Fragment, null,
+                React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center` }, "Votre panier est vide."),
+                React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "mt-4" }, "Fermer")
+              )
+            :
+              React.createElement(React.Fragment, null,
+                React.createElement("div", { className: `border-b border-[${THEME.colors.border}] pb-2` },
+                  React.createElement("div", { className: `grid ${showPrices ? 'grid-cols-4' : 'grid-cols-2'} gap-2 text-xs font-semibold text-[${THEME.colors.textMuted}] uppercase tracking-wider` },
+                    React.createElement("span", null, "Produit"),
+                    React.createElement("span", { className: "text-center" }, "Qté"),
+                    showPrices && React.createElement("span", { className: "text-right" }, "Prix"),
+                    showPrices && React.createElement("span", { className: "text-right" }, "Total")
+                  )
+                ),
+                React.createElement("div", { className: "space-y-3 max-h-60 overflow-y-auto pr-1" },
+                  cart.map(item => {
+                    const totalItem = item.quantity * item.price * item.packQty;
+                    return React.createElement("div", {
+                      key: item.id,
+                      className: `flex items-center bg-[${THEME.colors.cardBg}] p-3 rounded-xl border border-[${THEME.colors.border}] shadow-sm`
+                    },
+                      React.createElement("div", { className: "flex-1 min-w-0" },
+                        React.createElement("p", { className: `font-medium text-[${THEME.colors.text}] truncate` }, item.name),
+                        React.createElement("p", { className: `text-xs text-[${THEME.colors.textMuted}]` }, item.packQty, " unités/pack")
+                      ),
+                      React.createElement("div", { className: `w-12 text-center text-sm text-[${THEME.colors.text}]` }, item.quantity),
+                      showPrices && React.createElement("div", { className: `w-16 text-right text-sm text-[${THEME.colors.secondary}]` }, item.price + " DZD"),
+                      showPrices && React.createElement("div", { className: `w-20 text-right text-sm font-medium text-[${THEME.colors.text}] flex items-center justify-end gap-2` },
+                        totalItem + " DZD",
+                        React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 active:scale-90" }, "✕")
+                      ),
+                      !showPrices && React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 ml-2 active:scale-90" }, "✕")
+                    );
+                  })
+                ),
+                showPrices && React.createElement("div", { className: `border-t border-[${THEME.colors.border}] pt-3 mt-2` },
+                  React.createElement("div", { className: "flex justify-between items-center" },
+                    React.createElement("span", { className: `text-sm font-medium text-[${THEME.colors.textMuted}]` }, "Total général"),
+                    React.createElement("span", { className: `text-lg font-bold text-[${THEME.colors.primary}]` }, getTotalPrice() + " DZD")
+                  )
+                ),
+                React.createElement("div", { className: "space-y-3 mt-4 border-t border-[#3A4A5F] pt-4" },
+                  React.createElement("label", { className: "block text-xs font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Informations de livraison"),
+                  React.createElement("input", { type: "text", placeholder: "Nom complet *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.nom, onChange: e => setClientInfo({...clientInfo, nom: e.target.value}) }),
+                  React.createElement("input", { type: "text", placeholder: "Adresse *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.adresse, onChange: e => setClientInfo({...clientInfo, adresse: e.target.value}) }),
+                  React.createElement("input", { type: "tel", placeholder: "Téléphone *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.telephone, onChange: e => setClientInfo({...clientInfo, telephone: e.target.value}) }),
+                  React.createElement("textarea", { placeholder: "Commentaire (optionnel)", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8] resize-none", rows: 2, value: clientInfo.commentaire, onChange: e => setClientInfo({...clientInfo, commentaire: e.target.value}) })
+                ),
+                React.createElement("div", { className: "flex gap-3 mt-4" },
+                  React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "flex-1" }, "Fermer"),
+                  React.createElement(Button, { onClick: validateOrder, className: "flex-1" }, "Valider la commande")
+                )
+              )
+          )
+        ),
+        React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => setModals(prev => ({ ...prev, orders: false })) },
+          React.createElement("div", { className: "flex justify-between items-center mb-4" },
+            React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg` }, "Commandes"),
+            React.createElement("button", { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}] text-lg transition-colors` }, "✕")
+          ),
+          React.createElement("div", { className: `flex gap-2 mb-4 border-b border-[${THEME.colors.border}]` },
+            React.createElement("button", { onClick: () => setOrderTab('received'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'received' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Reçues"),
+            React.createElement("button", { onClick: () => setOrderTab('processing'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'processing' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Traitées"),
+            React.createElement("button", { onClick: () => setOrderTab('delivered'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'delivered' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Livrées")
+          ),
+          orders.filter(order => order.status === orderTab).length === 0 ?
+            React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center py-4` }, "Aucune commande dans cet onglet.")
+          :
+            React.createElement("div", { className: "space-y-4" },
+              orders.filter(order => order.status === orderTab).map(order => React.createElement("div", { key: order.id, className: `border border-[${THEME.colors.border}] rounded-xl p-4 bg-[${THEME.colors.cardBg}]` },
+                React.createElement("div", { className: "flex justify-between items-center" },
+                  React.createElement("span", { className: `font-medium text-[${THEME.colors.primary}]` }, "Commande de ", (order.client && order.client.nom) || order.id),
+                  React.createElement("span", { className: `text-sm text-[${THEME.colors.textMuted}]` }, order.date)
+                ),
+                order.client && React.createElement("div", { className: "text-sm text-[#9CA3AF] mb-2 mt-1" },
+                  React.createElement("p", null, "Client : ", order.client.nom),
+                  React.createElement("p", null, "Adresse : ", order.client.adresse),
+                  React.createElement("p", null, "Tél : ", order.client.telephone),
+                  order.client.commentaire && React.createElement("p", { className: "italic" }, "Note : ", order.client.commentaire)
+                ),
+                order.items.map(item => React.createElement("div", { key: item.id, className: `flex justify-between text-sm text-[${THEME.colors.text}] border-b border-[${THEME.colors.border}] py-1` },
+                  React.createElement("span", null, item.name, " x", item.quantity),
+                  showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}]` }, item.quantity * item.price * item.packQty, " DZD") : React.createElement("span", null, "-")
+                )),
+                React.createElement("div", { className: "flex justify-between items-center mt-2" },
+                  React.createElement("span", { className: `font-semibold text-[${THEME.colors.text}]` }, showPrices ? "Total: " + order.total + " DZD" : "Total: -"),
+                  React.createElement("div", { className: "flex gap-2" },
+                    orderTab === 'received' && React.createElement(React.Fragment, null,
+                      React.createElement("button", { onClick: () => handleProcess(order.id), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Traiter"),
+                      React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
+                    ),
+                    orderTab === 'processing' && React.createElement(React.Fragment, null,
+                      React.createElement("button", { onClick: () => handleDeliver(order.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Livrer"),
+                      React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
+                    )
+                  )
+                )
+              )),
+              React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: "mt-4" }, "Fermer")
+            )
+        ),
+        React.createElement(Modal, { isOpen: modals.notifications, title: "Notifications ntfy", onClose: () => setModals(prev => ({ ...prev, notifications: false })) },
+          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "NTFY Topic :"),
+          React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: ntfyTopic, onChange: e => setNtfyTopic(e.target.value.trim()), placeholder: "Entrez le topic ntfy" }),
+          React.createElement("div", { className: "flex gap-3 mt-2" },
+            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, notifications: false })) }, DICT.UI.BTN_CANCEL),
+            React.createElement(Button, { onClick: testNtfy }, "Tester")
+          )
+        ),
+        React.createElement(Modal, { isOpen: modals.advancedOptions, title: "Options avancées", onClose: () => setModals(prev => ({ ...prev, advancedOptions: false })) },
+          React.createElement("div", { className: "flex flex-col gap-3" },
+            React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, imgbb: true })); } }, "Banque d'images"),
+            React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, notifications: true })); } }, "Notifications"),
+            React.createElement("div", { className: "flex flex-col gap-2" },
+              React.createElement(Button, { variant: "secondary", onClick: () => { logoInputRef.current.click(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Uploader un logo"),
+              React.createElement("input", { type: "file", ref: logoInputRef, accept: "image/*", onChange: handleLogoUpload, className: "hidden" }),
+              React.createElement("div", { className: "flex items-center gap-2 mt-2" },
+                React.createElement("input", {
+                  type: "text",
+                  className: `flex-1 p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
+                  placeholder: "ou entrez l'URL du logo",
+                  value: logoUrlInput,
+                  onChange: e => setLogoUrlInput(e.target.value)
+                }),
+                React.createElement("button", { onClick: handleLogoUrlSubmit, className: "px-4 py-3 bg-[#E8F04F] text-[#0E1B2D] rounded-xl font-medium hover:brightness-110 transition whitespace-nowrap" }, "Appliquer URL")
+              )
+            ),
+            React.createElement(Button, { variant: "secondary", onClick: () => { handleTitleChange(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Titre"),
+            React.createElement(Button, { variant: "secondary", onClick: () => { openManageAdmins(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Admins")
+          )
+        )
+      );
+
+      // ----- RENDU PRINCIPAL -----
+      if (loading) {
+        return React.createElement("div", { className: "fixed inset-0 flex items-center justify-center bg-[#0E1B2D] text-white" },
+          React.createElement("div", { className: "text-center" }, "Chargement...")
+        );
+      }
+
+      return React.createElement("div", { className: `fixed inset-0 bg-[${THEME.colors.background}] flex justify-center overflow-y-auto` },
+        React.createElement("div", { className: `w-full max-w-sm min-h-screen p-5 pb-20 transition-opacity duration-300 ${isTransitioning ? 'opacity-0' : 'opacity-100'}` },
+          React.createElement("div", { className: "flex justify-between items-center mb-6" },
+            React.createElement("div", { className: "flex items-center gap-2" },
+              logoUrl && React.createElement("img", { src: logoUrl, alt: "Logo", className: "h-[50px] w-auto object-contain" }),
+              React.createElement("button", { onClick: goHome, className: `text-[${THEME.colors.primary}] text-xs font-medium uppercase tracking-wider hover:text-[${THEME.colors.primary}]/80 transition active:scale-95` },
+                currentView === DICT.VIEW.DASHBOARD ? appTitle : '← Retour'
+              )
+            ),
+            React.createElement("div", { className: "flex items-center gap-2" },
+              isAdmin && React.createElement("button", { onClick: togglePrices, className: `w-8 h-8 rounded-full text-xs font-bold border-2 transition-colors flex items-center justify-center active:scale-95 ${showPrices ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `border-[${THEME.colors.border}] text-[${THEME.colors.textMuted}]`}` }, "DZD"),
+              React.createElement("button", { onClick: toggleAdmin, className: `px-3 py-1 text-xs font-medium uppercase rounded-full border transition-colors active:scale-95 ${isAdmin ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `text-[${THEME.colors.textMuted}] border-[${THEME.colors.border}] hover:border-[${THEME.colors.primary}]`}` },
+                isAdmin ? "Admin" : "Connexion"
+              )
+            )
+          ),
+          currentView === DICT.VIEW.DASHBOARD ?
+            isAdmin ?
+              React.createElement("div", { className: "flex flex-col gap-3" },
+                React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, brand: true })) }, "+ Ajouter une marque"),
+                React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, brandSelect: true })) }, "+ Ajouter un produit"),
+                React.createElement(Button, { variant: "danger", onClick: () => setModals(prev => ({ ...prev, manage: true })) }, "Gérer"),
+                React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, orders: true })) }, "Commandes"),
+                React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, advancedOptions: true })) }, "Options avancées")
+              )
+            :
+              React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                brands.map(brand => React.createElement(BrandCard, { key: brand.id, brand, onClick: () => openBrand(brand) }))
+              )
+          :
+            React.createElement(React.Fragment, null,
+              React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+                selectedBrand && selectedBrand.products
+                  ? selectedBrand.products.filter(p => !p.hidden).map(prod =>
+                      React.createElement(ProductCard, { key: prod.id, product: prod, onClick: () => openProductDetail(prod, selectedBrand), showPrices })
+                    )
+                  : React.createElement("p", { className: "text-gray-400 text-center col-span-2" }, "Aucun produit dans cette marque.")
+              )
+            ),
+          renderModals()
+        ),
+        React.createElement(Toast, { message: toast.message, type: toast.type, onClose: hideToast }),
+        React.createElement(Modal, { isOpen: showPinModal, title: pinMode === 'verify' ? "Code PIN" : "Créer le premier admin", onClose: () => setShowPinModal(false) },
+          React.createElement("div", { className: "space-y-4" },
+            pinError && React.createElement("p", { className: "text-rose-400 text-sm" }, pinError),
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, pinMode === 'verify' ? "Entrez votre code PIN (8 chiffres)" : "Nouveau code PIN (8 chiffres)"),
+            React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: pinInput, onChange: e => setPinInput(e.target.value.replace(/\D/g, '')), placeholder: "8 chiffres minimum" }),
+            pinMode === 'create' && React.createElement(React.Fragment, null,
+              React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1 mt-2` }, "Confirmer le code PIN"),
+              React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: pinConfirm, onChange: e => setPinConfirm(e.target.value.replace(/\D/g, '')), placeholder: "Confirmation" }),
+              React.createElement("p", { className: "text-xs text-[#3DC59D] mt-1" }, "Le premier admin s'appellera : MEKEIRISHDEV")
+            ),
+            React.createElement("div", { className: "flex gap-3 mt-4" },
+              React.createElement(Button, { variant: "secondary", onClick: () => setShowPinModal(false) }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: handlePinSubmit }, pinMode === 'verify' ? "Valider" : "Créer")
+            )
+          )
+        ),
+        React.createElement(Modal, { isOpen: showManageAdmins, title: "Administrateurs", onClose: () => setShowManageAdmins(false) },
+          React.createElement("div", { className: "space-y-4" },
+            adminList.length === 0 ?
+              React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center` }, "Aucun administrateur.")
+            :
+              React.createElement("div", { className: "space-y-2" },
+                adminList.map((admin, idx) =>
+                  React.createElement("div", { key: idx, className: `flex items-center justify-between p-2 bg-[${THEME.colors.inputBg}] rounded-lg border border-[${THEME.colors.border}]` },
+                    React.createElement("div", { className: "flex flex-col" },
+                      React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, admin.name),
+                      React.createElement("span", { className: `text-[${THEME.colors.textMuted}] font-mono text-xs` }, admin.hash.slice(0, 8) + '…')
+                    ),
+                    React.createElement("button", { onClick: () => handleRemoveAdmin(admin.hash, admin.name), className: "text-rose-400 hover:text-rose-300 text-sm px-2" }, "✕")
+                  )
+                )
+              ),
+            React.createElement("div", { className: "border-t border-[${THEME.colors.border}] pt-4" },
+              React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}] mb-2` }, "Ajouter un nouvel administrateur"),
+              React.createElement("div", { className: "flex flex-col gap-2" },
+                React.createElement("input", { type: "text", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, placeholder: "Nom de l'admin", value: newAdminName, onChange: e => setNewAdminName(e.target.value) }),
+                React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, placeholder: "Code PIN (8 chiffres)", value: pinInput, onChange: e => setPinInput(e.target.value.replace(/\D/g, '')) }),
+                React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, placeholder: "Confirmation", value: pinConfirm, onChange: e => setPinConfirm(e.target.value.replace(/\D/g, '')) }),
+                React.createElement(Button, { onClick: async () => {
+                  if (!newAdminName.trim()) { showToast('Veuillez entrer un nom.', 'error'); return; }
+                  if (pinInput.length < 8) { showToast('Le PIN doit comporter au moins 8 chiffres.', 'error'); return; }
+                  if (pinInput !== pinConfirm) { showToast('Les PINs ne correspondent pas.', 'error'); return; }
+                  try {
+                    await addAdminPin(pinInput, newAdminName.trim());
+                    setNewAdminName('');
+                    setPinInput('');
+                    setPinConfirm('');
+                    showToast(`${newAdminName} ajouté avec succès.`, 'success');
+                  } catch (err) { showToast(err.message, 'error'); }
+                } }, "Ajouter")
+              )
+            ),
+            React.createElement(Button, { variant: "secondary", onClick: () => setShowManageAdmins(false), className: "mt-4" }, "Fermer")
+          )
+        ),
+        React.createElement(Modal, { isOpen: showDeleteConfirmModal, title: "Confirmer la suppression", onClose: () => { setShowDeleteConfirmModal(false); setDeleteTarget(null); setDeleteCode(''); } },
+          React.createElement("div", { className: "space-y-4" },
+            React.createElement("p", { className: `text-[${THEME.colors.text}]` }, `Supprimer "${deleteTarget?.name}" ?`),
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Code de suppression"),
+            React.createElement("input", { type: "password", className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: deleteCode, onChange: e => setDeleteCode(e.target.value), placeholder: "Code de suppression", autoFocus: true }),
+            React.createElement("div", { className: "flex gap-3 mt-4" },
+              React.createElement(Button, { variant: "secondary", onClick: () => { setShowDeleteConfirmModal(false); setDeleteTarget(null); setDeleteCode(''); } }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: confirmDeleteAdmin }, "Supprimer")
+            )
+          )
+        ),
+        React.createElement("div", { className: "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-sm px-4" },
+          React.createElement("div", {
+            className: `flex items-center justify-between px-4 py-2 rounded-full bg-[#0E1B2D]/80 backdrop-blur-md border border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 ${cart.length === 0 ? 'opacity-50 grayscale' : ''}`
+          },
+            React.createElement("div", { className: "flex items-center gap-2" },
+              React.createElement("span", { className: `text-[${THEME.colors.text}] text-lg` }, "🛒"),
+              cart.length > 0 && React.createElement("span", { className: `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full` }, cart.length)
+            ),
+            React.createElement("button", { onClick: () => setModals(prev => ({ ...prev, cart: true })), className: "flex items-center gap-2 active:scale-95 transition bg-[#E8F04F] text-[#0E1B2D] px-4 py-1.5 rounded-full font-bold text-sm shadow-md" }, "Commander")
+          )
+        )
+      );
+    };
+
+    window.reactRoot = window.reactRoot || ReactDOM.createRoot(document.getElementById('root'));
+    window.reactRoot.render(React.createElement(App, null));
+  </script>
+
+  <!-- NOUVEAU Service Worker avec mise à jour automatique -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const installingWorker = reg.installing;
+          installingWorker.addEventListener('statechange', () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // Un nouveau service worker est disponible, on recharge la page
+              window.location.reload();
+            }
+          });
+        });
+      });
     }
-  ]
-}
+  </script>
+</body>
+</html>
