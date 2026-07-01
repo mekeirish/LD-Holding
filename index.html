@@ -27,7 +27,10 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4b6cb7">
   <link rel="apple-touch-icon" href="icon.png">
-</head>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4b6cb7">
+<link rel="apple-touch-icon" href="icon.png"></head>
 <body>
   <div id="root"></div>
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
@@ -303,7 +306,6 @@
       const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('ntfy_topic') || 'ldholdingnotif');
       useEffect(() => localStorage.setItem('ntfy_topic', ntfyTopic), [ntfyTopic]);
 
-      // Fonctions Firebase
       const fetchAdmins = async () => {
         try {
           const snapshot = await firebase.database().ref('admins').once('value');
@@ -887,7 +889,6 @@
 
       // ----- RENDU DES MODALES (COMPLET) -----
       const renderModals = () => React.createElement(React.Fragment, null,
-        // Modale Nouvelle Marque
         React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
           React.createElement("input", {
@@ -901,7 +902,6 @@
             React.createElement(Button, { onClick: addBrand }, "Créer")
           )
         ),
-        // Modale Gestion
         React.createElement(Modal, { isOpen: modals.manage, title: "Gestion", onClose: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } },
           !showDataPanel ?
             React.createElement(React.Fragment, null,
@@ -988,7 +988,6 @@
               React.createElement(Button, { variant: "secondary", onClick: () => { setShowDataPanel(false); setSelectedBrandForData(''); }, className: "mt-4" }, "Retour")
             )
         ),
-        // Modale Choisir Marque
         React.createElement(Modal, { isOpen: modals.brandSelect, title: "Choisir Marque", onClose: () => setModals(prev => ({ ...prev, brandSelect: false })) },
           React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" },
             brands.map(b => React.createElement("button", {
@@ -999,7 +998,6 @@
           ),
           React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brandSelect: false })) }, DICT.UI.BTN_CANCEL)
         ),
-        // Modale Nouveau Produit
         React.createElement(Modal, { isOpen: modals.product, title: "Nouveau Produit", onClose: () => setModals(prev => ({ ...prev, product: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
           React.createElement("input", { type: "text", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, name: e.target.value }) }),
@@ -1014,7 +1012,6 @@
             React.createElement(Button, { onClick: addProduct }, "Ajouter")
           )
         ),
-        // Modale API imgbb
         React.createElement(Modal, { isOpen: modals.imgbb, title: "Banque d'images - API imgbb", onClose: () => setModals(prev => ({ ...prev, imgbb: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Clé API imgbb"),
           React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: imgbbApiKey, onChange: e => setImgbbApiKey(e.target.value), placeholder: "Entrez votre clé API" }),
@@ -1024,7 +1021,6 @@
             React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, "Enregistrer")
           )
         ),
-        // Modale Détail produit
         React.createElement(Modal, { isOpen: modals.productDetail, title: "Détail du produit", onClose: () => setModals(prev => ({ ...prev, productDetail: false })) },
           selectedProduct && React.createElement(React.Fragment, null,
             React.createElement("div", { className: "flex flex-col items-center mb-5" },
@@ -1050,7 +1046,6 @@
             )
           )
         ),
-        // Modale Panier
         React.createElement(Modal, { isOpen: modals.cart, title: "Mon panier", onClose: () => setModals(prev => ({ ...prev, cart: false })) },
           React.createElement("div", { className: "space-y-4" },
             cart.length === 0 ?
@@ -1109,7 +1104,6 @@
               )
           )
         ),
-        // Modale Commandes
         React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => setModals(prev => ({ ...prev, orders: false })) },
           React.createElement("div", { className: "flex justify-between items-center mb-4" },
             React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg` }, "Commandes"),
@@ -1156,7 +1150,6 @@
               React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: "mt-4" }, "Fermer")
             )
         ),
-        // Modale Notifications
         React.createElement(Modal, { isOpen: modals.notifications, title: "Notifications ntfy", onClose: () => setModals(prev => ({ ...prev, notifications: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "NTFY Topic :"),
           React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: ntfyTopic, onChange: e => setNtfyTopic(e.target.value.trim()), placeholder: "Entrez le topic ntfy" }),
@@ -1165,7 +1158,6 @@
             React.createElement(Button, { onClick: testNtfy }, "Tester")
           )
         ),
-        // Modale Options avancées
         React.createElement(Modal, { isOpen: modals.advancedOptions, title: "Options avancées", onClose: () => setModals(prev => ({ ...prev, advancedOptions: false })) },
           React.createElement("div", { className: "flex flex-col gap-3" },
             React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, imgbb: true })); } }, "Banque d'images"),
@@ -1238,9 +1230,7 @@
             ),
           renderModals()
         ),
-        // Toast
         React.createElement(Toast, { message: toast.message, type: toast.type, onClose: hideToast }),
-        // Modale PIN
         React.createElement(Modal, { isOpen: showPinModal, title: pinMode === 'verify' ? "Code PIN" : "Créer le premier admin", onClose: () => setShowPinModal(false) },
           React.createElement("div", { className: "space-y-4" },
             pinError && React.createElement("p", { className: "text-rose-400 text-sm" }, pinError),
@@ -1257,7 +1247,6 @@
             )
           )
         ),
-        // Modale Gestion Admins
         React.createElement(Modal, { isOpen: showManageAdmins, title: "Administrateurs", onClose: () => setShowManageAdmins(false) },
           React.createElement("div", { className: "space-y-4" },
             adminList.length === 0 ?
@@ -1297,7 +1286,6 @@
             React.createElement(Button, { variant: "secondary", onClick: () => setShowManageAdmins(false), className: "mt-4" }, "Fermer")
           )
         ),
-        // Modale confirmation suppression
         React.createElement(Modal, { isOpen: showDeleteConfirmModal, title: "Confirmer la suppression", onClose: () => { setShowDeleteConfirmModal(false); setDeleteTarget(null); setDeleteCode(''); } },
           React.createElement("div", { className: "space-y-4" },
             React.createElement("p", { className: `text-[${THEME.colors.text}]` }, `Supprimer "${deleteTarget?.name}" ?`),
@@ -1309,7 +1297,6 @@
             )
           )
         ),
-        // Barre de panier
         React.createElement("div", { className: "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-sm px-4" },
           React.createElement("div", {
             className: `flex items-center justify-between px-4 py-2 rounded-full bg-[#0E1B2D]/80 backdrop-blur-md border border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 ${cart.length === 0 ? 'opacity-50 grayscale' : ''}`
@@ -1327,9 +1314,24 @@
     window.reactRoot = window.reactRoot || ReactDOM.createRoot(document.getElementById('root'));
     window.reactRoot.render(React.createElement(App, null));
   </script>
+
+  <!-- NOUVEAU Service Worker avec mise à jour automatique -->
   <script>
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const installingWorker = reg.installing;
+          installingWorker.addEventListener('statechange', () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // Un nouveau service worker est disponible, on recharge la page
+              window.location.reload();
+            }
+          });
+        });
+      });
+    }
   </script>
-  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
+
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
 </body>
 </html>
