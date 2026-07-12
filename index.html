@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="fr-FR"><head>
+<html lang="fr-FR">
+<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>LD Holding</title>
@@ -26,10 +27,12 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4b6cb7">
   <link rel="apple-touch-icon" href="icon.png">
-
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4b6cb7">
-<link rel="apple-touch-icon" href="icon.png"><meta name="description" content="Précommandes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="msapplication-TileColor" content="#030712"><meta name="msapplication-config" content="/browserconfig.xml"></head>
+  <meta name="description" content="Précommandes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="msapplication-TileColor" content="#030712">
+  <meta name="msapplication-config" content="/browserconfig.xml">
+</head>
 <body>
   <div id="root"></div>
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
@@ -546,13 +549,16 @@
       };
 
       const [newProduct, setNewProduct] = useState({ name: "", qty: "", price: "", image: null, brandId: null });
+      
+      // ******** CORRECTION APPLIQUÉE ICI ********
       const addProduct = async () => {
         if (!newProduct.name || !newProduct.brandId) { showToast("Veuillez remplir tous les champs.", "error"); return; }
         try {
           const product = { id: Date.now(), name: newProduct.name, qty: Number(newProduct.qty), price: Number(newProduct.price), image: newProduct.image || null, hidden: false };
           const brand = brands.find(b => b.id === newProduct.brandId);
           if (!brand) return;
-          const updatedProducts = [...brand.products, product];
+          // Correction : utilisation de (brand.products || []) pour éviter l'erreur si products est undefined
+          const updatedProducts = [...(brand.products || []), product];
           await firebase.database().ref('brands').child(newProduct.brandId).update({ products: updatedProducts });
           setNewProduct({ name: "", qty: "", price: "", image: null, brandId: null });
           setModals(prev => ({ ...prev, product: false }));
@@ -886,7 +892,7 @@
       const triggerConfirmDeleteProduct = (brandId, productId) => setConfirmDeleteProduct({ brandId, productId });
       const cancelDeleteProduct = () => setConfirmDeleteProduct(null);
 
-      // ----- RENDU DES MODALES (COMPLET) -----
+      // ----- RENDU DES MODALES (inchangé) -----
       const renderModals = () => React.createElement(React.Fragment, null,
         React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
@@ -1314,7 +1320,7 @@
     window.reactRoot.render(React.createElement(App, null));
   </script>
 
-  <!-- NOUVEAU Service Worker avec mise à jour automatique -->
+  <!-- Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').then(reg => {
@@ -1322,7 +1328,6 @@
           const installingWorker = reg.installing;
           installingWorker.addEventListener('statechange', () => {
             if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // Un nouveau service worker est disponible, on recharge la page
               window.location.reload();
             }
           });
@@ -1330,7 +1335,6 @@
       });
     }
   </script>
-
-<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
-
-</body></html>
+  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
+</body>
+</html>
