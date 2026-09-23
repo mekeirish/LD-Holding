@@ -17,6 +17,10 @@
     ::-webkit-scrollbar { display: none; }
     input, select, textarea { background-color: #1E2F44; color: #F0F4F8; border-color: #3A4A5F; }
     input:focus, select:focus, textarea:focus { border-color: #E8F04F; outline: none; }
+    /* Supprimer les flèches des inputs number */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
     .modal-overlay { animation: fadeIn 0.25s ease-out; }
     .modal-content { animation: scaleIn 0.25s ease-out; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -191,6 +195,8 @@
       const fileInputRef = useRef(null);
       const imageInputRef = useRef(null);
       const logoInputRef = useRef(null);
+      const longPressTimerRef = useRef(null);
+      const longPressTriggeredRef = useRef(false);
 
       useEffect(() => {
         try {
@@ -294,6 +300,7 @@
       const [confirmDeleteProduct, setConfirmDeleteProduct] = useState(null);
       const [selectedProduct, setSelectedProduct] = useState(null);
       const [productQuantity, setProductQuantity] = useState(1);
+      const [productQuantityInput, setProductQuantityInput] = useState('1');
       const [orderTab, setOrderTab] = useState('received');
 
       const [cart, setCart] = useState(() => {
@@ -482,6 +489,45 @@
         }
       };
 
+      // --- Long press sur le logo (2s) pour activer/désactiver le mode admin ---
+      const startLongPress = () => {
+        longPressTriggeredRef.current = false;
+        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = setTimeout(() => {
+          longPressTriggeredRef.current = true;
+          if (isAdmin) {
+            setIsAdmin(false);
+            showToast('Mode administrateur désactivé.', 'info');
+          } else {
+            openPinModal('verify');
+          }
+        }, 2000);
+      };
+
+      const cancelLongPress = () => {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      };
+
+      const handleLogoClick = (e) => {
+        // Si le long press a déjà été déclenché, on empêche le clic normal
+        if (longPressTriggeredRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          longPressTriggeredRef.current = false;
+          return;
+        }
+        // Sinon, clic normal = retour accueil
+        goHome();
+      };
+
+      // Nettoyage du timer au démontage
+      useEffect(() => {
+        return () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); };
+      }, []);
+
       const toggleAdmin = () => {
         if (isAdmin) { setIsAdmin(false); showToast('Mode administrateur désactivé.', 'info'); }
         else openPinModal('verify');
@@ -550,14 +596,12 @@
 
       const [newProduct, setNewProduct] = useState({ name: "", qty: "", price: "", image: null, brandId: null });
       
-      // ******** CORRECTION APPLIQUÉE ICI ********
       const addProduct = async () => {
         if (!newProduct.name || !newProduct.brandId) { showToast("Veuillez remplir tous les champs.", "error"); return; }
         try {
           const product = { id: Date.now(), name: newProduct.name, qty: Number(newProduct.qty), price: Number(newProduct.price), image: newProduct.image || null, hidden: false };
           const brand = brands.find(b => b.id === newProduct.brandId);
           if (!brand) return;
-          // Correction : utilisation de (brand.products || []) pour éviter l'erreur si products est undefined
           const updatedProducts = [...(brand.products || []), product];
           await firebase.database().ref('brands').child(newProduct.brandId).update({ products: updatedProducts });
           setNewProduct({ name: "", qty: "", price: "", image: null, brandId: null });
@@ -685,16 +729,45 @@
       const openProductDetail = (product, brand) => {
         setSelectedProduct({ ...product, brandName: brand.name, brandId: brand.id });
         setProductQuantity(1);
+        setProductQuantityInput('1');
         setModals(prev => ({ ...prev, productDetail: true }));
+      };
+
+      const updateQuantity = (newQty) => {
+        const qty = Math.max(1, Math.floor(Number(newQty) || 1));
+        setProductQuantity(qty);
+        setProductQuantityInput(String(qty));
+      };
+
+      const handleQuantityInputChange = (value) => {
+        // Autorise uniquement les chiffres
+        const cleaned = value.replace(/\D/g, '');
+        setProductQuantityInput(cleaned);
+        if (cleaned !== '') {
+          const num = parseInt(cleaned, 10);
+          if (!isNaN(num) && num >= 1) setProductQuantity(num);
+        }
+      };
+
+      const handleQuantityInputBlur = () => {
+        const num = parseInt(productQuantityInput, 10);
+        if (isNaN(num) || num < 1) {
+          setProductQuantity(1);
+          setProductQuantityInput('1');
+        } else {
+          setProductQuantity(num);
+          setProductQuantityInput(String(num));
+        }
       };
 
       const addToCart = () => {
         if (!selectedProduct) return;
+        const finalQty = Math.max(1, productQuantity);
         const existing = cart.find(item => item.productId === selectedProduct.id && item.brandId === selectedProduct.brandId);
         if (existing) {
           setCart(cart.map(item =>
             item.productId === selectedProduct.id && item.brandId === selectedProduct.brandId
-              ? { ...item, quantity: item.quantity + productQuantity }
+              ? { ...item, quantity: item.quantity + finalQty }
               : item
           ));
         } else {
@@ -705,7 +778,7 @@
             name: selectedProduct.name,
             price: selectedProduct.price,
             packQty: selectedProduct.qty,
-            quantity: productQuantity
+            quantity: finalQty
           }]);
         }
         setModals(prev => ({ ...prev, productDetail: false }));
@@ -892,7 +965,7 @@
       const triggerConfirmDeleteProduct = (brandId, productId) => setConfirmDeleteProduct({ brandId, productId });
       const cancelDeleteProduct = () => setConfirmDeleteProduct(null);
 
-      // ----- RENDU DES MODALES (inchangé) -----
+      // ----- RENDU DES MODALES -----
       const renderModals = () => React.createElement(React.Fragment, null,
         React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
@@ -1037,12 +1110,21 @@
               showPrices && React.createElement("p", { className: `text-sm text-[${THEME.colors.secondary}]` }, "Prix unitaire : ", selectedProduct.price, " DZD"),
               React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}]` }, "Contenu du pack : ", selectedProduct.qty, " unités")
             ),
-            React.createElement("div", { className: "flex items-center justify-center gap-4 mb-5" },
+            React.createElement("div", { className: "flex items-center justify-center gap-3 mb-5" },
               React.createElement("label", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, "Nombre de packs :"),
-              React.createElement("div", { className: "flex items-center gap-3" },
-                React.createElement("button", { onClick: () => setProductQuantity(Math.max(1, productQuantity - 1)), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
-                React.createElement("span", { className: `w-8 text-center font-medium text-[${THEME.colors.text}]` }, productQuantity),
-                React.createElement("button", { onClick: () => setProductQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
+              React.createElement("div", { className: "flex items-center gap-2" },
+                React.createElement("button", { onClick: () => updateQuantity(productQuantity - 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
+                React.createElement("input", {
+                  type: "text",
+                  inputMode: "numeric",
+                  pattern: "[0-9]*",
+                  value: productQuantityInput,
+                  onChange: e => handleQuantityInputChange(e.target.value),
+                  onBlur: handleQuantityInputBlur,
+                  onFocus: e => e.target.select(),
+                  className: `w-20 text-center font-medium text-[${THEME.colors.text}] bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] rounded-lg py-1.5 focus:border-[${THEME.colors.primary}] outline-none transition`
+                }),
+                React.createElement("button", { onClick: () => updateQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
               )
             ),
             React.createElement("div", { className: "flex gap-3" },
@@ -1198,16 +1280,28 @@
         React.createElement("div", { className: `w-full max-w-sm min-h-screen p-5 pb-20 transition-opacity duration-300 ${isTransitioning ? 'opacity-0' : 'opacity-100'}` },
           React.createElement("div", { className: "flex justify-between items-center mb-6" },
             React.createElement("div", { className: "flex items-center gap-2" },
-              logoUrl && React.createElement("img", { src: logoUrl, alt: "Logo", className: "h-[50px] w-auto object-contain" }),
-              React.createElement("button", { onClick: goHome, className: `text-[${THEME.colors.primary}] text-xs font-medium uppercase tracking-wider hover:text-[${THEME.colors.primary}]/80 transition active:scale-95` },
-                currentView === DICT.VIEW.DASHBOARD ? appTitle : '← Retour'
+              React.createElement("div", {
+                onMouseDown: startLongPress,
+                onMouseUp: cancelLongPress,
+                onMouseLeave: cancelLongPress,
+                onTouchStart: startLongPress,
+                onTouchEnd: cancelLongPress,
+                onTouchCancel: cancelLongPress,
+                onClick: handleLogoClick,
+                className: "flex items-center gap-2 cursor-pointer select-none",
+                title: isAdmin ? "Appui long pour désactiver le mode admin" : "Appui long (2s) pour la connexion admin"
+              },
+                logoUrl
+                  ? React.createElement("img", { src: logoUrl, alt: "Logo", className: "h-[50px] w-auto object-contain pointer-events-none" })
+                  : React.createElement("span", { className: `text-[${THEME.colors.primary}] text-sm font-bold tracking-wider pointer-events-none` }, appTitle),
+                logoUrl && React.createElement("span", { className: `text-[${THEME.colors.primary}] text-xs font-medium uppercase tracking-wider pointer-events-none` },
+                  currentView === DICT.VIEW.DASHBOARD ? appTitle : '← Retour'
+                )
               )
             ),
             React.createElement("div", { className: "flex items-center gap-2" },
               isAdmin && React.createElement("button", { onClick: togglePrices, className: `w-8 h-8 rounded-full text-xs font-bold border-2 transition-colors flex items-center justify-center active:scale-95 ${showPrices ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `border-[${THEME.colors.border}] text-[${THEME.colors.textMuted}]`}` }, "DZD"),
-              React.createElement("button", { onClick: toggleAdmin, className: `px-3 py-1 text-xs font-medium uppercase rounded-full border transition-colors active:scale-95 ${isAdmin ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `text-[${THEME.colors.textMuted}] border-[${THEME.colors.border}] hover:border-[${THEME.colors.primary}]`}` },
-                isAdmin ? "Admin" : "Connexion"
-              )
+              isAdmin && React.createElement("span", { className: `px-3 py-1 text-xs font-medium uppercase rounded-full bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border border-[${THEME.colors.primary}]` }, "Admin")
             )
           ),
           currentView === DICT.VIEW.DASHBOARD ?
