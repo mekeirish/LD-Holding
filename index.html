@@ -27,7 +27,7 @@
     .animate-slide-up { animation: slideUp 0.3s ease-out; }
   </style>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#4b6cb7">
+  <meta name="theme-color" content="#030712">
   <link rel="apple-touch-icon" href="icon.png">
   <meta name="description" content="Précommandes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -327,36 +327,28 @@
       const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('ntfy_topic') || 'ldholdingnotif');
       useEffect(() => localStorage.setItem('ntfy_topic', ntfyTopic), [ntfyTopic]);
 
-      // ===== PARSEUR ROBUSTE DE DATES (multi-format) =====
       const getOrderTimestamp = (order) => {
         if (!order) return null;
-
         if (typeof order.timestamp === 'number' && order.timestamp > 0) {
           return new Date(order.timestamp);
         }
         if (!order.date) return null;
-
         let s = String(order.date)
           .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
           .replace(/\u00a0/g, ' ');
-
         if (/^\d{4}-\d{2}-\d{2}/.test(s.trim())) {
           const d = new Date(s);
           if (!isNaN(d.getTime())) return d;
         }
-
         s = s.replace(/م/g, 'PM').replace(/ص/g, 'AM');
-
         const dateMatch = s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
         if (!dateMatch) {
           const d = new Date(s);
           return isNaN(d.getTime()) ? null : d;
         }
-
         const na = parseInt(dateMatch[1], 10);
         const nb = parseInt(dateMatch[2], 10);
         const year = parseInt(dateMatch[3], 10);
-
         let day, month;
         if (na > 12 && nb <= 12) {
           day = na; month = nb;
@@ -365,7 +357,6 @@
         } else {
           day = na; month = nb;
         }
-
         const timeMatch = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
         let hour = 0, minute = 0, second = 0;
         if (timeMatch) {
@@ -376,9 +367,7 @@
         const upper = s.toUpperCase();
         if (/PM/.test(upper) && hour < 12) hour += 12;
         if (/AM/.test(upper) && hour === 12) hour = 0;
-
         if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-
         const d = new Date(year, month - 1, day, hour, minute, second);
         return isNaN(d.getTime()) ? null : d;
       };
@@ -789,7 +778,6 @@
         } catch (err) { console.error('Erreur handleCancelOrder:', err); showToast('Erreur lors de l\'annulation de la commande.', 'error'); }
       };
 
-      // ===== NOUVEAU : revenir à l'état "reçue" =====
       const handleBackToReceived = async (orderId) => {
         try {
           await firebase.database().ref('orders').child(orderId).update({ status: 'received' });
