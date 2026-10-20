@@ -331,27 +331,22 @@
       const getOrderTimestamp = (order) => {
         if (!order) return null;
 
-        // 1) Timestamp numérique : le plus fiable, on s'arrête là
         if (typeof order.timestamp === 'number' && order.timestamp > 0) {
           return new Date(order.timestamp);
         }
         if (!order.date) return null;
 
-        // 2) Nettoyer la chaîne : marques RTL/LTR, espaces insécables
         let s = String(order.date)
           .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
           .replace(/\u00a0/g, ' ');
 
-        // 3) Format ISO 8601 direct : 2026-06-20T20:40:40.000Z
         if (/^\d{4}-\d{2}-\d{2}/.test(s.trim())) {
           const d = new Date(s);
           if (!isNaN(d.getTime())) return d;
         }
 
-        // 4) Traduire AM/PM arabe (م = PM, ص = AM)
         s = s.replace(/م/g, 'PM').replace(/ص/g, 'AM');
 
-        // 5) Extraire jj/mm/aaaa ou mm/jj/aaaa
         const dateMatch = s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
         if (!dateMatch) {
           const d = new Date(s);
@@ -362,17 +357,15 @@
         const nb = parseInt(dateMatch[2], 10);
         const year = parseInt(dateMatch[3], 10);
 
-        // 6) Désambiguïser le format
         let day, month;
         if (na > 12 && nb <= 12) {
-          day = na; month = nb;               // jj/mm/aaaa
+          day = na; month = nb;
         } else if (nb > 12 && na <= 12) {
-          day = nb; month = na;               // mm/jj/aaaa
+          day = nb; month = na;
         } else {
-          day = na; month = nb;               // ambigu (ex: 01/02/2026) → on privilégie jj/mm (FR)
+          day = na; month = nb;
         }
 
-        // 7) Extraire l'heure (12h ou 24h)
         const timeMatch = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
         let hour = 0, minute = 0, second = 0;
         if (timeMatch) {
@@ -384,14 +377,12 @@
         if (/PM/.test(upper) && hour < 12) hour += 12;
         if (/AM/.test(upper) && hour === 12) hour = 0;
 
-        // 8) Valider
         if (month < 1 || month > 12 || day < 1 || day > 31) return null;
 
         const d = new Date(year, month - 1, day, hour, minute, second);
         return isNaN(d.getTime()) ? null : d;
       };
 
-      // ===== FORMATAGE UNIFORME (jj/mm/aaaa hh:mm) =====
       const formatOrderDate = (order) => {
         const d = getOrderTimestamp(order);
         if (!d) return order && order.date ? order.date : '—';
@@ -399,7 +390,6 @@
         return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
       };
 
-      // ===== MIGRATION ONE-SHOT DES ANCIENNES DATES =====
       const migrateOrderDates = async () => {
         if (!isAdmin) return;
         try {
@@ -408,9 +398,9 @@
           const updates = {};
           Object.keys(data).forEach(id => {
             const o = data[id];
-            if (typeof o.timestamp === 'number') return;       // déjà OK
+            if (typeof o.timestamp === 'number') return;
             const d = getOrderTimestamp(o);
-            if (!d) return;                                    // impossible à parser → on laisse tel quel
+            if (!d) return;
             updates[`${id}/timestamp`] = d.getTime();
             updates[`${id}/date`] = d.toISOString();
           });
@@ -762,7 +752,7 @@
         const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
         const now = new Date();
         const newOrder = {
-          date: now.toISOString(),   // ISO 8601 : universel, triable, sans ambiguïté
+          date: now.toISOString(),
           timestamp: now.getTime(),
           items: cart.map(item => ({ ...item })),
           total,
@@ -797,6 +787,14 @@
           await firebase.database().ref('orders').child(orderId).remove();
           showToast("Commande annulée.", "info");
         } catch (err) { console.error('Erreur handleCancelOrder:', err); showToast('Erreur lors de l\'annulation de la commande.', 'error'); }
+      };
+
+      // ===== NOUVEAU : revenir à l'état "reçue" =====
+      const handleBackToReceived = async (orderId) => {
+        try {
+          await firebase.database().ref('orders').child(orderId).update({ status: 'received' });
+          showToast("Commande renvoyée dans les reçues.", "info");
+        } catch (err) { console.error('Erreur handleBackToReceived:', err); showToast('Erreur lors du retour de la commande.', 'error'); }
       };
 
       useEffect(() => {
@@ -1073,7 +1071,6 @@
       const triggerConfirmDeleteProduct = (brandId, productId) => setConfirmDeleteProduct({ brandId, productId });
       const cancelDeleteProduct = () => setConfirmDeleteProduct(null);
 
-      // ===== HELPERS STATISTIQUES =====
       const computeWeeklyStats = (periodWeeks) => {
         const now = new Date();
         now.setHours(23, 59, 59, 999);
@@ -1131,7 +1128,6 @@
         return Object.values(map).sort((a, b) => b.count - a.count || b.total - a.total);
       };
 
-      // ----- RENDER MODALE STATISTIQUES -----
       const renderStatsModal = () => {
         if (!modals.stats) return null;
 
@@ -1306,9 +1302,7 @@
         );
       };
 
-      // ----- RENDU DES MODALES -----
       const renderModals = () => {
-        // Tri des commandes de l'onglet courant : plus récentes en haut
         const sortedOrders = orders
           .filter(order => order.status === orderTab)
           .sort((a, b) => {
@@ -1586,13 +1580,14 @@
                       )),
                       React.createElement("div", { className: "flex justify-between items-center mt-3 flex-wrap gap-2" },
                         React.createElement("span", { className: `font-semibold text-[${THEME.colors.text}]` }, showPrices ? "Total: " + order.total + " DZD" : "Total: -"),
-                        React.createElement("div", { className: "flex gap-2" },
+                        React.createElement("div", { className: "flex flex-wrap gap-2" },
                           orderTab === 'received' && React.createElement(React.Fragment, null,
                             React.createElement("button", { onClick: () => handleProcess(order.id), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Traiter"),
                             React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
                           ),
                           orderTab === 'processing' && React.createElement(React.Fragment, null,
                             React.createElement("button", { onClick: () => handleDeliver(order.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Livrer"),
+                            React.createElement("button", { onClick: () => handleBackToReceived(order.id), className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "← Retour"),
                             React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
                           )
                         )
@@ -1643,7 +1638,6 @@
         );
       };
 
-      // ----- RENDU PRINCIPAL -----
       if (loading) {
         return React.createElement("div", { className: "fixed inset-0 flex items-center justify-center bg-[#0E1B2D] text-white" },
           React.createElement("div", { className: "text-center" }, "Chargement...")
