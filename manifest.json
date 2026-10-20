@@ -1,13 +1,11 @@
 {
-  "start_url": "./",
-  "scope": "/",
+  "name": "LD Holding",
+  "short_name": "LD Holding",
+  "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "any",
+  "background_color": "#030712",
   "theme_color": "#030712",
-  "background_color": "#1f2937",
-  "dir": "auto",
-  "lang": "fr-FR",
-  "categories": [],
+  "description": "Précommandes",
   "icons": [
     {
       "src": "icon.png",
@@ -19,6 +17,5 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ],
-  "screenshots": []
+  ]
 }
