@@ -7,7 +7,6 @@
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-  <!-- Firebase CDN -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -17,7 +16,6 @@
     ::-webkit-scrollbar { display: none; }
     input, select, textarea { background-color: #1E2F44; color: #F0F4F8; border-color: #3A4A5F; }
     input:focus, select:focus, textarea:focus { border-color: #E8F04F; outline: none; }
-    /* Supprimer les flèches des inputs number */
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     input[type=number] { -moz-appearance: textfield; }
@@ -89,7 +87,17 @@
         className: `fixed inset-0 flex items-center justify-center p-4 z-50 modal-overlay bg-[${THEME.colors.background}]/80 backdrop-blur-sm`
       }, React.createElement("div", {
         className: `modal-content w-full max-w-sm p-6 rounded-2xl max-h-[80vh] overflow-y-auto border border-[${THEME.colors.border}] shadow-2xl bg-[${THEME.colors.cardBg}]`
-      }, React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg mb-5` }, title), children));
+      },
+        React.createElement("div", { className: "flex justify-between items-center mb-5 gap-2" },
+          React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg` }, title),
+          onClose && React.createElement("button", {
+            onClick: onClose,
+            className: `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}] text-base transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-[${THEME.colors.inputBg}] flex-shrink-0`,
+            "aria-label": "Fermer"
+          }, "✕")
+        ),
+        children
+      ));
     };
 
     const ImageUpload = ({ onUpload }) => {
@@ -192,6 +200,9 @@
       const [logoUrlInput, setLogoUrlInput] = useState('');
       const [clientInfo, setClientInfo] = useState({ nom: '', adresse: '', telephone: '', commentaire: '' });
 
+      const [statsPeriod, setStatsPeriod] = useState(8);
+      const [showAllClients, setShowAllClients] = useState(false);
+
       const fileInputRef = useRef(null);
       const imageInputRef = useRef(null);
       const logoInputRef = useRef(null);
@@ -287,7 +298,7 @@
       const [modals, setModals] = useState({
         brand: false, product: false, brandSelect: false, manage: false,
         imgbb: false, productDetail: false, cart: false, orders: false, notifications: false,
-        advancedOptions: false
+        advancedOptions: false, stats: false
       });
       const [editingProduct, setEditingProduct] = useState(null);
       const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
@@ -302,6 +313,7 @@
       const [productQuantity, setProductQuantity] = useState(1);
       const [productQuantityInput, setProductQuantityInput] = useState('1');
       const [orderTab, setOrderTab] = useState('received');
+      const [expandedOrderId, setExpandedOrderId] = useState(null);
 
       const [cart, setCart] = useState(() => {
         const saved = localStorage.getItem('cart');
@@ -314,6 +326,105 @@
 
       const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('ntfy_topic') || 'ldholdingnotif');
       useEffect(() => localStorage.setItem('ntfy_topic', ntfyTopic), [ntfyTopic]);
+
+      // ===== PARSEUR ROBUSTE DE DATES (multi-format) =====
+      const getOrderTimestamp = (order) => {
+        if (!order) return null;
+
+        // 1) Timestamp numérique : le plus fiable, on s'arrête là
+        if (typeof order.timestamp === 'number' && order.timestamp > 0) {
+          return new Date(order.timestamp);
+        }
+        if (!order.date) return null;
+
+        // 2) Nettoyer la chaîne : marques RTL/LTR, espaces insécables
+        let s = String(order.date)
+          .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+          .replace(/\u00a0/g, ' ');
+
+        // 3) Format ISO 8601 direct : 2026-06-20T20:40:40.000Z
+        if (/^\d{4}-\d{2}-\d{2}/.test(s.trim())) {
+          const d = new Date(s);
+          if (!isNaN(d.getTime())) return d;
+        }
+
+        // 4) Traduire AM/PM arabe (م = PM, ص = AM)
+        s = s.replace(/م/g, 'PM').replace(/ص/g, 'AM');
+
+        // 5) Extraire jj/mm/aaaa ou mm/jj/aaaa
+        const dateMatch = s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+        if (!dateMatch) {
+          const d = new Date(s);
+          return isNaN(d.getTime()) ? null : d;
+        }
+
+        const na = parseInt(dateMatch[1], 10);
+        const nb = parseInt(dateMatch[2], 10);
+        const year = parseInt(dateMatch[3], 10);
+
+        // 6) Désambiguïser le format
+        let day, month;
+        if (na > 12 && nb <= 12) {
+          day = na; month = nb;               // jj/mm/aaaa
+        } else if (nb > 12 && na <= 12) {
+          day = nb; month = na;               // mm/jj/aaaa
+        } else {
+          day = na; month = nb;               // ambigu (ex: 01/02/2026) → on privilégie jj/mm (FR)
+        }
+
+        // 7) Extraire l'heure (12h ou 24h)
+        const timeMatch = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        let hour = 0, minute = 0, second = 0;
+        if (timeMatch) {
+          hour = parseInt(timeMatch[1], 10);
+          minute = parseInt(timeMatch[2], 10);
+          second = parseInt(timeMatch[3] || '0', 10);
+        }
+        const upper = s.toUpperCase();
+        if (/PM/.test(upper) && hour < 12) hour += 12;
+        if (/AM/.test(upper) && hour === 12) hour = 0;
+
+        // 8) Valider
+        if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+        const d = new Date(year, month - 1, day, hour, minute, second);
+        return isNaN(d.getTime()) ? null : d;
+      };
+
+      // ===== FORMATAGE UNIFORME (jj/mm/aaaa hh:mm) =====
+      const formatOrderDate = (order) => {
+        const d = getOrderTimestamp(order);
+        if (!d) return order && order.date ? order.date : '—';
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      };
+
+      // ===== MIGRATION ONE-SHOT DES ANCIENNES DATES =====
+      const migrateOrderDates = async () => {
+        if (!isAdmin) return;
+        try {
+          const snapshot = await firebase.database().ref('orders').once('value');
+          const data = snapshot.val() || {};
+          const updates = {};
+          Object.keys(data).forEach(id => {
+            const o = data[id];
+            if (typeof o.timestamp === 'number') return;       // déjà OK
+            const d = getOrderTimestamp(o);
+            if (!d) return;                                    // impossible à parser → on laisse tel quel
+            updates[`${id}/timestamp`] = d.getTime();
+            updates[`${id}/date`] = d.toISOString();
+          });
+          if (Object.keys(updates).length === 0) {
+            showToast('Aucune commande à migrer.', 'info');
+            return;
+          }
+          await firebase.database().ref('orders').update(updates);
+          showToast(`${Object.keys(updates).length / 2} commande(s) migrée(s).`, 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Erreur migration : ' + err.message, 'error');
+        }
+      };
 
       const fetchAdmins = async () => {
         try {
@@ -489,7 +600,6 @@
         }
       };
 
-      // --- Long press sur le logo (2s) pour activer/désactiver le mode admin ---
       const startLongPress = () => {
         longPressTriggeredRef.current = false;
         if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -512,18 +622,15 @@
       };
 
       const handleLogoClick = (e) => {
-        // Si le long press a déjà été déclenché, on empêche le clic normal
         if (longPressTriggeredRef.current) {
           e.preventDefault();
           e.stopPropagation();
           longPressTriggeredRef.current = false;
           return;
         }
-        // Sinon, clic normal = retour accueil
         goHome();
       };
 
-      // Nettoyage du timer au démontage
       useEffect(() => {
         return () => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); };
       }, []);
@@ -595,7 +702,7 @@
       };
 
       const [newProduct, setNewProduct] = useState({ name: "", qty: "", price: "", image: null, brandId: null });
-      
+
       const addProduct = async () => {
         if (!newProduct.name || !newProduct.brandId) { showToast("Veuillez remplir tous les champs.", "error"); return; }
         try {
@@ -653,8 +760,10 @@
         if (!clientInfo.telephone.trim()) { showToast("Veuillez entrer votre téléphone.", "error"); return; }
         const total = cart.reduce((sum, item) => sum + item.quantity * item.price * item.packQty, 0);
         const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+        const now = new Date();
         const newOrder = {
-          date: new Date().toLocaleString(),
+          date: now.toISOString(),   // ISO 8601 : universel, triable, sans ambiguïté
+          timestamp: now.getTime(),
           items: cart.map(item => ({ ...item })),
           total,
           status: 'received',
@@ -708,20 +817,20 @@
 
       const openBrand = brand => {
         setIsTransitioning(true);
-        setTimeout(() => { 
-          setSelectedBrand(brand); 
-          setCurrentView(DICT.VIEW.DETAIL); 
-          setIsTransitioning(false); 
+        setTimeout(() => {
+          setSelectedBrand(brand);
+          setCurrentView(DICT.VIEW.DETAIL);
+          setIsTransitioning(false);
           history.pushState({ view: 'DETAIL', brandId: brand.id }, '', '');
         }, 300);
       };
 
       const goHome = () => {
         setIsTransitioning(true);
-        setTimeout(() => { 
-          setCurrentView(DICT.VIEW.DASHBOARD); 
+        setTimeout(() => {
+          setCurrentView(DICT.VIEW.DASHBOARD);
           setSelectedBrand(null);
-          setIsTransitioning(false); 
+          setIsTransitioning(false);
           history.replaceState({ view: 'DASHBOARD' }, '', window.location.href);
         }, 300);
       };
@@ -740,7 +849,6 @@
       };
 
       const handleQuantityInputChange = (value) => {
-        // Autorise uniquement les chiffres
         const cleaned = value.replace(/\D/g, '');
         setProductQuantityInput(cleaned);
         if (cleaned !== '') {
@@ -965,309 +1073,575 @@
       const triggerConfirmDeleteProduct = (brandId, productId) => setConfirmDeleteProduct({ brandId, productId });
       const cancelDeleteProduct = () => setConfirmDeleteProduct(null);
 
-      // ----- RENDU DES MODALES -----
-      const renderModals = () => React.createElement(React.Fragment, null,
-        React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
-          React.createElement("input", {
-            type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-            value: newBrand.name, onChange: e => setNewBrand({ ...newBrand, name: e.target.value })
-          }),
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Image"),
-          React.createElement(ImageUpload, { onUpload: handleFormImageUpload(setNewBrand, newBrand) }),
-          React.createElement("div", { className: "flex gap-3 mt-4" },
-            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brand: false })) }, DICT.UI.BTN_CANCEL),
-            React.createElement(Button, { onClick: addBrand }, "Créer")
-          )
-        ),
-        React.createElement(Modal, { isOpen: modals.manage, title: "Gestion", onClose: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } },
-          !showDataPanel ?
-            React.createElement(React.Fragment, null,
-              brands.map(b => React.createElement("div", { key: b.id, className: "mb-3" },
+      // ===== HELPERS STATISTIQUES =====
+      const computeWeeklyStats = (periodWeeks) => {
+        const now = new Date();
+        now.setHours(23, 59, 59, 999);
+        let nWeeks = periodWeeks;
+        if (nWeeks === 0) {
+          const timestamps = orders.map(getOrderTimestamp).filter(Boolean);
+          if (timestamps.length === 0) {
+            nWeeks = 4;
+          } else {
+            const oldest = Math.min(...timestamps.map(t => t.getTime()));
+            const diffMs = now.getTime() - oldest;
+            nWeeks = Math.min(Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1, 52);
+          }
+        }
+        const buckets = [];
+        for (let i = nWeeks - 1; i >= 0; i--) {
+          const end = new Date(now);
+          end.setDate(end.getDate() - i * 7);
+          end.setHours(23, 59, 59, 999);
+          const start = new Date(end);
+          start.setDate(start.getDate() - 6);
+          start.setHours(0, 0, 0, 0);
+          buckets.push({
+            start, end, count: 0, revenue: 0,
+            label: `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}`
+          });
+        }
+        orders.forEach(order => {
+          const ts = getOrderTimestamp(order);
+          if (!ts) return;
+          for (const b of buckets) {
+            if (ts >= b.start && ts <= b.end) {
+              b.count++;
+              b.revenue += Number(order.total) || 0;
+              break;
+            }
+          }
+        });
+        return buckets;
+      };
+
+      const computeClientStats = () => {
+        const map = {};
+        orders.forEach(order => {
+          const client = order.client || {};
+          const phone = (client.telephone || '').trim().replace(/\s/g, '');
+          const name = (client.nom || '').trim() || 'Anonyme';
+          const key = phone ? 'p:' + phone : 'n:' + name.toLowerCase();
+          if (!map[key]) map[key] = { key, name, phone, count: 0, total: 0 };
+          map[key].count++;
+          map[key].total += Number(order.total) || 0;
+          map[key].name = name;
+          if (phone) map[key].phone = phone;
+        });
+        return Object.values(map).sort((a, b) => b.count - a.count || b.total - a.total);
+      };
+
+      // ----- RENDER MODALE STATISTIQUES -----
+      const renderStatsModal = () => {
+        if (!modals.stats) return null;
+
+        const weeklyStats = computeWeeklyStats(statsPeriod);
+        const clientStats = computeClientStats();
+        const totalInPeriod = weeklyStats.reduce((s, w) => s + w.count, 0);
+        const revenueInPeriod = weeklyStats.reduce((s, w) => s + w.revenue, 0);
+        const maxWeekCount = Math.max(...weeklyStats.map(w => w.count), 1);
+        const maxClientCount = clientStats.length > 0 ? clientStats[0].count : 1;
+        const displayedClients = showAllClients ? clientStats : clientStats.slice(0, 10);
+        const labelStep = Math.max(1, Math.ceil(weeklyStats.length / 8));
+
+        return React.createElement(Modal, {
+          isOpen: modals.stats,
+          title: "Statistiques",
+          onClose: () => setModals(prev => ({ ...prev, stats: false }))
+        },
+          React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-4" },
+            React.createElement("div", { className: "bg-[#1E2F44] rounded-xl p-3 border border-[#3A4A5F]" },
+              React.createElement("div", { className: "text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Commandes"),
+              React.createElement("div", { className: "text-2xl font-bold text-[#E8F04F] mt-1 leading-none" }, totalInPeriod),
+              React.createElement("div", { className: "text-[10px] text-[#9CA3AF] mt-1" }, `sur ${orders.length} au total`),
+              showPrices && React.createElement("div", { className: "text-[10px] text-[#3DC59D] mt-1 font-medium" }, `${revenueInPeriod.toLocaleString()} DZD`)
+            ),
+            React.createElement("div", { className: "bg-[#1E2F44] rounded-xl p-3 border border-[#3A4A5F]" },
+              React.createElement("div", { className: "text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Clients"),
+              React.createElement("div", { className: "text-2xl font-bold text-[#3DC59D] mt-1 leading-none" }, clientStats.length),
+              React.createElement("div", { className: "text-[10px] text-[#9CA3AF] mt-1" },
+                clientStats.length > 0 ? `Top: ${clientStats[0].count} cmd` : 'Aucun client'
+              )
+            )
+          ),
+          React.createElement("div", { className: "mb-3" },
+            React.createElement("div", { className: "text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider mb-2" }, "Période d'étude"),
+            React.createElement("div", { className: "flex gap-2" },
+              [4, 8, 12, 0].map(p =>
                 React.createElement("button", {
-                  onClick: () => setManageSelectedBrand(manageSelectedBrand === b.id ? null : b.id),
-                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl text-left font-medium text-[${THEME.colors.text}] hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}]`
-                }, b.name),
-                manageSelectedBrand === b.id && React.createElement("div", { className: "ml-2 mt-2 space-y-2" },
-                  React.createElement("div", { className: "flex gap-2" },
-                    React.createElement("button", { onClick: () => startEditBrand(b), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Modifier"),
-                    React.createElement("button", { onClick: () => confirmDeleteBrand(b.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Supprimer")
+                  key: p,
+                  onClick: () => setStatsPeriod(p),
+                  className: `flex-1 py-2 rounded-lg text-xs font-medium transition active:scale-95 ${
+                    statsPeriod === p
+                      ? 'bg-[#E8F04F] text-[#0E1B2D]'
+                      : 'bg-[#1E2F44] text-[#9CA3AF] border border-[#3A4A5F]'
+                  }`
+                }, p === 0 ? 'Tout' : `${p} sem.`)
+              )
+            )
+          ),
+          React.createElement("div", { className: "bg-[#1E2F44] rounded-xl p-3 mb-4 border border-[#3A4A5F]" },
+            React.createElement("h3", { className: "text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-3" }, "Commandes par semaine"),
+            weeklyStats.some(w => w.count > 0)
+              ? React.createElement(React.Fragment, null,
+                  React.createElement("div", {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      gap: 3,
+                      height: 140,
+                      paddingBottom: 4,
+                      borderBottom: '1px solid #3A4A5F'
+                    }
+                  },
+                    weeklyStats.map((w, i) => {
+                      const pct = w.count / maxWeekCount;
+                      return React.createElement("div", {
+                        key: i,
+                        style: {
+                          flex: 1,
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                          position: 'relative'
+                        }
+                      },
+                        w.count > 0 && weeklyStats.length <= 20 && React.createElement("span", {
+                          style: {
+                            fontSize: 9,
+                            color: '#E8F04F',
+                            fontWeight: 600,
+                            position: 'absolute',
+                            bottom: `calc(${pct * 80}% + 4px)`,
+                            whiteSpace: 'nowrap'
+                          }
+                        }, w.count),
+                        React.createElement("div", {
+                          style: {
+                            width: '100%',
+                            maxWidth: 30,
+                            height: `${pct * 80}%`,
+                            minHeight: w.count > 0 ? 3 : 0,
+                            background: 'linear-gradient(to top, #3DC59D, #E8F04F)',
+                            borderRadius: '3px 3px 0 0'
+                          }
+                        })
+                      );
+                    })
                   ),
-                  editingBrandId === b.id && React.createElement("div", { className: `p-4 bg-[${THEME.colors.inputBg}] rounded-xl space-y-2 border border-[${THEME.colors.border}]` },
-                    React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
-                    React.createElement("input", { type: "text", value: editingBrandName, onChange: e => setEditingBrandName(e.target.value), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
-                    React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Image"),
-                    React.createElement(ImageUpload, { onUpload: async (dataUrl) => { try { const url = await uploadToImgbb(dataUrl); setEditingBrandImage(url); showToast('Image uploadée.', 'success'); } catch (e) { showToast('Erreur upload: '+e.message, 'error'); } } }),
-                    React.createElement("div", { className: "flex gap-2 pt-2" },
-                      React.createElement("button", { onClick: cancelEditBrand, className: "text-sm bg-gray-600 text-white px-4 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Annuler"),
-                      React.createElement("button", { onClick: saveBrandEdit, className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Enregistrer")
+                  React.createElement("div", { style: { display: 'flex', gap: 3, marginTop: 6 } },
+                    weeklyStats.map((w, i) =>
+                      React.createElement("div", {
+                        key: i,
+                        style: {
+                          flex: 1,
+                          textAlign: 'center',
+                          fontSize: 8,
+                          color: '#9CA3AF',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap'
+                        }
+                      }, (i % labelStep === 0 || i === weeklyStats.length - 1) ? w.label : '')
                     )
+                  )
+                )
+              : React.createElement("p", { className: "text-center text-sm text-[#9CA3AF] py-6" }, "Aucune commande sur cette période")
+          ),
+          React.createElement("div", { className: "bg-[#1E2F44] rounded-xl p-3 mb-4 border border-[#3A4A5F]" },
+            React.createElement("h3", { className: "text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-3" },
+              showAllClients || clientStats.length <= 10 ? "Tous les clients" : "Top 10 clients"
+            ),
+            clientStats.length === 0
+              ? React.createElement("p", { className: "text-center text-sm text-[#9CA3AF] py-6" }, "Aucun client pour le moment")
+              : React.createElement(React.Fragment, null,
+                  React.createElement("div", { className: "space-y-2.5" },
+                    displayedClients.map((c, i) => {
+                      const pct = maxClientCount > 0 ? (c.count / maxClientCount) * 100 : 0;
+                      return React.createElement("div", {
+                        key: c.key,
+                        style: { display: 'flex', alignItems: 'center', gap: 6 }
+                      },
+                        React.createElement("span", {
+                          style: { width: 18, fontSize: 10, color: i === 0 ? '#E8F04F' : '#9CA3AF', textAlign: 'right', flexShrink: 0, fontWeight: i < 3 ? 700 : 400 }
+                        }, i + 1),
+                        React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                          React.createElement("div", { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, gap: 4 } },
+                            React.createElement("span", {
+                              style: { fontSize: 11, color: '#F0F4F8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }
+                            }, c.name),
+                            React.createElement("span", {
+                              style: { fontSize: 11, color: i === 0 ? '#E8F04F' : '#3DC59D', fontWeight: 700, flexShrink: 0 }
+                            }, c.count)
+                          ),
+                          React.createElement("div", {
+                            style: { height: 6, background: '#0E1B2D', borderRadius: 3, overflow: 'hidden' }
+                          },
+                            React.createElement("div", {
+                              style: {
+                                width: `${pct}%`,
+                                height: '100%',
+                                background: i === 0 ? 'linear-gradient(to right, #3DC59D, #E8F04F)' : '#3DC59D',
+                                borderRadius: 3,
+                                transition: 'width 0.4s ease'
+                              }
+                            })
+                          )
+                        )
+                      );
+                    })
                   ),
-                  confirmDeleteBrandId === b.id && React.createElement("div", { className: "p-3 bg-rose-500/20 rounded-xl flex items-center gap-3 border border-rose-500" },
-                    React.createElement("span", { className: "text-sm text-rose-300" }, "Confirmer ?"),
-                    React.createElement("button", { onClick: deleteBrand, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
-                    React.createElement("button", { onClick: cancelDeleteBrand, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
-                  ),
-                  (b.products || []).map(p => React.createElement("div", { key: p.id, className: "flex items-center gap-2 mt-2" },
-                    React.createElement("button", {
-                      onClick: () => toggleProductVisibility(b.id, p.id),
-                      className: `w-6 h-6 rounded border-2 flex items-center justify-center text-xs font-bold transition-colors ${p.hidden ? `border-[${THEME.colors.border}] bg-gray-700 text-gray-400` : `border-[${THEME.colors.primary}] bg-[${THEME.colors.primary}]/20 text-[${THEME.colors.primary}]`}`,
-                      title: p.hidden ? "Masqué" : "Visible"
-                    }, p.hidden ? "✖" : "✔"),
-                    React.createElement("button", { onClick: () => setEditingProduct(editingProduct?.id === p.id ? null : p), className: `flex-1 p-2 bg-[${THEME.colors.inputBg}] text-[${THEME.colors.text}] text-sm rounded-lg text-left hover:bg-[${THEME.colors.cardBg}] transition` }, p.name),
-                    React.createElement("button", { onClick: () => triggerConfirmDeleteProduct(b.id, p.id), className: "text-rose-400 font-medium text-sm px-2" }, "×"),
-                    editingProduct?.id === p.id && React.createElement("div", { className: `p-4 mt-2 bg-[${THEME.colors.inputBg}] rounded-xl w-full space-y-2 border border-[${THEME.colors.border}]` },
+                  clientStats.length > 10 && React.createElement("button", {
+                    onClick: () => setShowAllClients(!showAllClients),
+                    className: "w-full mt-3 py-2 text-xs font-medium text-[#E8F04F] hover:bg-[#0E1B2D] rounded-lg transition active:scale-95"
+                  }, showAllClients ? '← Voir moins' : `Voir tous les ${clientStats.length} clients →`)
+                )
+          ),
+          React.createElement(Button, {
+            variant: "secondary",
+            onClick: () => setModals(prev => ({ ...prev, stats: false })),
+            className: "mt-2"
+          }, "Fermer")
+        );
+      };
+
+      // ----- RENDU DES MODALES -----
+      const renderModals = () => {
+        // Tri des commandes de l'onglet courant : plus récentes en haut
+        const sortedOrders = orders
+          .filter(order => order.status === orderTab)
+          .sort((a, b) => {
+            const ta = getOrderTimestamp(a);
+            const tb = getOrderTimestamp(b);
+            const va = ta ? ta.getTime() : 0;
+            const vb = tb ? tb.getTime() : 0;
+            return vb - va;
+          });
+
+        return React.createElement(React.Fragment, null,
+          renderStatsModal(),
+          React.createElement(Modal, { isOpen: modals.brand, title: "Nouvelle Marque", onClose: () => setModals(prev => ({ ...prev, brand: false })) },
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
+            React.createElement("input", {
+              type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
+              value: newBrand.name, onChange: e => setNewBrand({ ...newBrand, name: e.target.value })
+            }),
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Image"),
+            React.createElement(ImageUpload, { onUpload: handleFormImageUpload(setNewBrand, newBrand) }),
+            React.createElement("div", { className: "flex gap-3 mt-4" },
+              React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brand: false })) }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: addBrand }, "Créer")
+            )
+          ),
+          React.createElement(Modal, { isOpen: modals.manage, title: "Gestion", onClose: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } },
+            !showDataPanel ?
+              React.createElement(React.Fragment, null,
+                brands.map(b => React.createElement("div", { key: b.id, className: "mb-3" },
+                  React.createElement("button", {
+                    onClick: () => setManageSelectedBrand(manageSelectedBrand === b.id ? null : b.id),
+                    className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl text-left font-medium text-[${THEME.colors.text}] hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}]`
+                  }, b.name),
+                  manageSelectedBrand === b.id && React.createElement("div", { className: "ml-2 mt-2 space-y-2" },
+                    React.createElement("div", { className: "flex gap-2" },
+                      React.createElement("button", { onClick: () => startEditBrand(b), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Modifier"),
+                      React.createElement("button", { onClick: () => confirmDeleteBrand(b.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Supprimer")
+                    ),
+                    editingBrandId === b.id && React.createElement("div", { className: `p-4 bg-[${THEME.colors.inputBg}] rounded-xl space-y-2 border border-[${THEME.colors.border}]` },
                       React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
-                      React.createElement("input", { type: "text", value: editingProduct.name, onChange: e => setEditingProduct({ ...editingProduct, name: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
-                      React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Pack"),
-                      React.createElement("input", { type: "number", value: editingProduct.qty, onChange: e => setEditingProduct({ ...editingProduct, qty: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
-                      React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Prix unitaire (DZD)"),
-                      React.createElement("input", { type: "number", value: editingProduct.price, onChange: e => setEditingProduct({ ...editingProduct, price: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                      React.createElement("input", { type: "text", value: editingBrandName, onChange: e => setEditingBrandName(e.target.value), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
                       React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Image"),
-                      React.createElement(ImageUpload, { onUpload: async (dataUrl) => { try { const url = await uploadToImgbb(dataUrl); setEditingProduct({ ...editingProduct, image: url }); showToast('Image uploadée.', 'success'); } catch (e) { showToast('Erreur upload: '+e.message, 'error'); } } }),
+                      React.createElement(ImageUpload, { onUpload: async (dataUrl) => { try { const url = await uploadToImgbb(dataUrl); setEditingBrandImage(url); showToast('Image uploadée.', 'success'); } catch (e) { showToast('Erreur upload: '+e.message, 'error'); } } }),
                       React.createElement("div", { className: "flex gap-2 pt-2" },
-                        React.createElement("button", { onClick: () => setEditingProduct(null), className: "text-sm bg-gray-600 text-white px-4 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, DICT.UI.BTN_CANCEL),
-                        React.createElement("button", { onClick: saveProductEdit, className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Enregistrer")
+                        React.createElement("button", { onClick: cancelEditBrand, className: "text-sm bg-gray-600 text-white px-4 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Annuler"),
+                        React.createElement("button", { onClick: saveBrandEdit, className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Enregistrer")
                       )
                     ),
-                    confirmDeleteProduct && confirmDeleteProduct.brandId === b.id && confirmDeleteProduct.productId === p.id && React.createElement("div", { className: "flex items-center gap-2 mt-1 bg-rose-500/20 p-2 rounded-xl border border-rose-500" },
+                    confirmDeleteBrandId === b.id && React.createElement("div", { className: "p-3 bg-rose-500/20 rounded-xl flex items-center gap-3 border border-rose-500" },
                       React.createElement("span", { className: "text-sm text-rose-300" }, "Confirmer ?"),
-                      React.createElement("button", { onClick: deleteProduct, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
-                      React.createElement("button", { onClick: cancelDeleteProduct, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
-                    )
-                  ))
+                      React.createElement("button", { onClick: deleteBrand, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
+                      React.createElement("button", { onClick: cancelDeleteBrand, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
+                    ),
+                    (b.products || []).map(p => React.createElement("div", { key: p.id, className: "flex items-center gap-2 mt-2" },
+                      React.createElement("button", {
+                        onClick: () => toggleProductVisibility(b.id, p.id),
+                        className: `w-6 h-6 rounded border-2 flex items-center justify-center text-xs font-bold transition-colors ${p.hidden ? `border-[${THEME.colors.border}] bg-gray-700 text-gray-400` : `border-[${THEME.colors.primary}] bg-[${THEME.colors.primary}]/20 text-[${THEME.colors.primary}]`}`,
+                        title: p.hidden ? "Masqué" : "Visible"
+                      }, p.hidden ? "✖" : "✔"),
+                      React.createElement("button", { onClick: () => setEditingProduct(editingProduct?.id === p.id ? null : p), className: `flex-1 p-2 bg-[${THEME.colors.inputBg}] text-[${THEME.colors.text}] text-sm rounded-lg text-left hover:bg-[${THEME.colors.cardBg}] transition` }, p.name),
+                      React.createElement("button", { onClick: () => triggerConfirmDeleteProduct(b.id, p.id), className: "text-rose-400 font-medium text-sm px-2" }, "×"),
+                      editingProduct?.id === p.id && React.createElement("div", { className: `p-4 mt-2 bg-[${THEME.colors.inputBg}] rounded-xl w-full space-y-2 border border-[${THEME.colors.border}]` },
+                        React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Nom"),
+                        React.createElement("input", { type: "text", value: editingProduct.name, onChange: e => setEditingProduct({ ...editingProduct, name: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                        React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Pack"),
+                        React.createElement("input", { type: "number", value: editingProduct.qty, onChange: e => setEditingProduct({ ...editingProduct, qty: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                        React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Prix unitaire (DZD)"),
+                        React.createElement("input", { type: "number", value: editingProduct.price, onChange: e => setEditingProduct({ ...editingProduct, price: e.target.value }), className: `w-full p-2 bg-[${THEME.colors.background}] rounded-lg border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none text-[${THEME.colors.text}]` }),
+                        React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}]` }, "Image"),
+                        React.createElement(ImageUpload, { onUpload: async (dataUrl) => { try { const url = await uploadToImgbb(dataUrl); setEditingProduct({ ...editingProduct, image: url }); showToast('Image uploadée.', 'success'); } catch (e) { showToast('Erreur upload: '+e.message, 'error'); } } }),
+                        React.createElement("div", { className: "flex gap-2 pt-2" },
+                          React.createElement("button", { onClick: () => setEditingProduct(null), className: "text-sm bg-gray-600 text-white px-4 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, DICT.UI.BTN_CANCEL),
+                          React.createElement("button", { onClick: saveProductEdit, className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-4 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Enregistrer")
+                        )
+                      ),
+                      confirmDeleteProduct && confirmDeleteProduct.brandId === b.id && confirmDeleteProduct.productId === p.id && React.createElement("div", { className: "flex items-center gap-2 mt-1 bg-rose-500/20 p-2 rounded-xl border border-rose-500" },
+                        React.createElement("span", { className: "text-sm text-rose-300" }, "Confirmer ?"),
+                        React.createElement("button", { onClick: deleteProduct, className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Oui"),
+                        React.createElement("button", { onClick: cancelDeleteProduct, className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "Non")
+                      )
+                    ))
+                  )
+                )),
+                React.createElement("div", { className: "flex gap-3 mt-4" },
+                  React.createElement(Button, { onClick: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } }, "Fermer"),
+                  React.createElement(Button, { variant: "secondary", onClick: () => setShowDataPanel(true) }, "Données")
                 )
-              )),
-              React.createElement("div", { className: "flex gap-3 mt-4" },
-                React.createElement(Button, { onClick: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } }, "Fermer"),
-                React.createElement(Button, { variant: "secondary", onClick: () => setShowDataPanel(true) }, "Données")
-              )
-            )
-          :
-            React.createElement(React.Fragment, null,
-              React.createElement("div", { className: "mb-4" },
-                React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Sélectionner une marque"),
-                React.createElement("select", {
-                  className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-                  value: selectedBrandForData,
-                  onChange: e => setSelectedBrandForData(e.target.value)
-                },
-                  React.createElement("option", { value: "" }, "-- Toutes les marques --"),
-                  brands.map(b => React.createElement("option", { key: b.id, value: b.id }, b.name))
-                )
-              ),
-              React.createElement("div", { className: "flex flex-col gap-3" },
-                React.createElement(Button, { variant: "secondary", onClick: () => fileInputRef.current.click(), disabled: !selectedBrandForData }, "Importer"),
-                React.createElement("input", { type: "file", ref: fileInputRef, accept: ".xlsx,.xls", onChange: handleImport, className: "hidden" }),
-                React.createElement(Button, { variant: "secondary", onClick: exportData }, "Exporter"),
-                React.createElement(Button, { variant: "secondary", onClick: () => imageInputRef.current.click(), disabled: !selectedBrandForData }, "Ajouter les images"),
-                React.createElement("input", { type: "file", ref: imageInputRef, accept: "image/*", multiple: true, onChange: handleAddImages, className: "hidden" })
-              ),
-              React.createElement(Button, { variant: "secondary", onClick: () => { setShowDataPanel(false); setSelectedBrandForData(''); }, className: "mt-4" }, "Retour")
-            )
-        ),
-        React.createElement(Modal, { isOpen: modals.brandSelect, title: "Choisir Marque", onClose: () => setModals(prev => ({ ...prev, brandSelect: false })) },
-          React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" },
-            brands.map(b => React.createElement("button", {
-              key: b.id,
-              onClick: () => { setNewProduct({ ...newProduct, brandId: b.id }); setModals({ brandSelect: false, product: true, brand: false, manage: false }); },
-              className: `p-3 bg-[${THEME.colors.inputBg}] rounded-xl text-[${THEME.colors.text}] hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}]`
-            }, b.name))
-          ),
-          React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brandSelect: false })) }, DICT.UI.BTN_CANCEL)
-        ),
-        React.createElement(Modal, { isOpen: modals.product, title: "Nouveau Produit", onClose: () => setModals(prev => ({ ...prev, product: false })) },
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
-          React.createElement("input", { type: "text", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, name: e.target.value }) }),
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Pack"),
-          React.createElement("input", { type: "number", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, qty: e.target.value }) }),
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Prix unitaire (DZD)"),
-          React.createElement("input", { type: "number", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, price: e.target.value }) }),
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Image"),
-          React.createElement(ImageUpload, { onUpload: handleFormImageUpload(setNewProduct, newProduct) }),
-          React.createElement("div", { className: "flex gap-3 mt-4" },
-            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, product: false })) }, DICT.UI.BTN_CANCEL),
-            React.createElement(Button, { onClick: addProduct }, "Ajouter")
-          )
-        ),
-        React.createElement(Modal, { isOpen: modals.imgbb, title: "Banque d'images - API imgbb", onClose: () => setModals(prev => ({ ...prev, imgbb: false })) },
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Clé API imgbb"),
-          React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: imgbbApiKey, onChange: e => setImgbbApiKey(e.target.value), placeholder: "Entrez votre clé API" }),
-          React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}] mb-4` }, "Les images seront hébergées sur imgbb."),
-          React.createElement("div", { className: "flex gap-3" },
-            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, DICT.UI.BTN_CANCEL),
-            React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, "Enregistrer")
-          )
-        ),
-        React.createElement(Modal, { isOpen: modals.productDetail, title: "Détail du produit", onClose: () => setModals(prev => ({ ...prev, productDetail: false })) },
-          selectedProduct && React.createElement(React.Fragment, null,
-            React.createElement("div", { className: "flex flex-col items-center mb-5" },
-              React.createElement("div", { className: `w-48 h-48 rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] mb-3` },
-                selectedProduct.image ? React.createElement("img", { src: selectedProduct.image, className: "w-full h-full object-cover" }) : React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "IMAGE")
-              ),
-              React.createElement("h3", { className: `text-lg font-semibold text-[${THEME.colors.primary}]` }, selectedProduct.name),
-              React.createElement("p", { className: `text-sm text-[${THEME.colors.text}]` }, "Marque : ", selectedProduct.brandName),
-              showPrices && React.createElement("p", { className: `text-sm text-[${THEME.colors.secondary}]` }, "Prix unitaire : ", selectedProduct.price, " DZD"),
-              React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}]` }, "Contenu du pack : ", selectedProduct.qty, " unités")
-            ),
-            React.createElement("div", { className: "flex items-center justify-center gap-3 mb-5" },
-              React.createElement("label", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, "Nombre de packs :"),
-              React.createElement("div", { className: "flex items-center gap-2" },
-                React.createElement("button", { onClick: () => updateQuantity(productQuantity - 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
-                React.createElement("input", {
-                  type: "text",
-                  inputMode: "numeric",
-                  pattern: "[0-9]*",
-                  value: productQuantityInput,
-                  onChange: e => handleQuantityInputChange(e.target.value),
-                  onBlur: handleQuantityInputBlur,
-                  onFocus: e => e.target.select(),
-                  className: `w-20 text-center font-medium text-[${THEME.colors.text}] bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] rounded-lg py-1.5 focus:border-[${THEME.colors.primary}] outline-none transition`
-                }),
-                React.createElement("button", { onClick: () => updateQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
-              )
-            ),
-            React.createElement("div", { className: "flex gap-3" },
-              React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, productDetail: false })) }, DICT.UI.BTN_CANCEL),
-              React.createElement(Button, { onClick: addToCart }, "Ajouter au panier")
-            )
-          )
-        ),
-        React.createElement(Modal, { isOpen: modals.cart, title: "Mon panier", onClose: () => setModals(prev => ({ ...prev, cart: false })) },
-          React.createElement("div", { className: "space-y-4" },
-            cart.length === 0 ?
-              React.createElement(React.Fragment, null,
-                React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center` }, "Votre panier est vide."),
-                React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "mt-4" }, "Fermer")
               )
             :
               React.createElement(React.Fragment, null,
-                React.createElement("div", { className: `border-b border-[${THEME.colors.border}] pb-2` },
-                  React.createElement("div", { className: `grid ${showPrices ? 'grid-cols-4' : 'grid-cols-2'} gap-2 text-xs font-semibold text-[${THEME.colors.textMuted}] uppercase tracking-wider` },
-                    React.createElement("span", null, "Produit"),
-                    React.createElement("span", { className: "text-center" }, "Qté"),
-                    showPrices && React.createElement("span", { className: "text-right" }, "Prix"),
-                    showPrices && React.createElement("span", { className: "text-right" }, "Total")
+                React.createElement("div", { className: "mb-4" },
+                  React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Sélectionner une marque"),
+                  React.createElement("select", {
+                    className: `w-full p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
+                    value: selectedBrandForData,
+                    onChange: e => setSelectedBrandForData(e.target.value)
+                  },
+                    React.createElement("option", { value: "" }, "-- Toutes les marques --"),
+                    brands.map(b => React.createElement("option", { key: b.id, value: b.id }, b.name))
                   )
                 ),
-                React.createElement("div", { className: "space-y-3 max-h-60 overflow-y-auto pr-1" },
-                  cart.map(item => {
-                    const totalItem = item.quantity * item.price * item.packQty;
-                    return React.createElement("div", {
-                      key: item.id,
-                      className: `flex items-center bg-[${THEME.colors.cardBg}] p-3 rounded-xl border border-[${THEME.colors.border}] shadow-sm`
-                    },
-                      React.createElement("div", { className: "flex-1 min-w-0" },
-                        React.createElement("p", { className: `font-medium text-[${THEME.colors.text}] truncate` }, item.name),
-                        React.createElement("p", { className: `text-xs text-[${THEME.colors.textMuted}]` }, item.packQty, " unités/pack")
-                      ),
-                      React.createElement("div", { className: `w-12 text-center text-sm text-[${THEME.colors.text}]` }, item.quantity),
-                      showPrices && React.createElement("div", { className: `w-16 text-right text-sm text-[${THEME.colors.secondary}]` }, item.price + " DZD"),
-                      showPrices && React.createElement("div", { className: `w-20 text-right text-sm font-medium text-[${THEME.colors.text}] flex items-center justify-end gap-2` },
-                        totalItem + " DZD",
-                        React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 active:scale-90" }, "✕")
-                      ),
-                      !showPrices && React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 ml-2 active:scale-90" }, "✕")
-                    );
-                  })
+                React.createElement("div", { className: "flex flex-col gap-3" },
+                  React.createElement(Button, { variant: "secondary", onClick: () => fileInputRef.current.click(), disabled: !selectedBrandForData }, "Importer"),
+                  React.createElement("input", { type: "file", ref: fileInputRef, accept: ".xlsx,.xls", onChange: handleImport, className: "hidden" }),
+                  React.createElement(Button, { variant: "secondary", onClick: exportData }, "Exporter"),
+                  React.createElement(Button, { variant: "secondary", onClick: () => imageInputRef.current.click(), disabled: !selectedBrandForData }, "Ajouter les images"),
+                  React.createElement("input", { type: "file", ref: imageInputRef, accept: "image/*", multiple: true, onChange: handleAddImages, className: "hidden" })
                 ),
-                showPrices && React.createElement("div", { className: `border-t border-[${THEME.colors.border}] pt-3 mt-2` },
-                  React.createElement("div", { className: "flex justify-between items-center" },
-                    React.createElement("span", { className: `text-sm font-medium text-[${THEME.colors.textMuted}]` }, "Total général"),
-                    React.createElement("span", { className: `text-lg font-bold text-[${THEME.colors.primary}]` }, getTotalPrice() + " DZD")
-                  )
-                ),
-                React.createElement("div", { className: "space-y-3 mt-4 border-t border-[#3A4A5F] pt-4" },
-                  React.createElement("label", { className: "block text-xs font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Informations de livraison"),
-                  React.createElement("input", { type: "text", placeholder: "Nom complet *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.nom, onChange: e => setClientInfo({...clientInfo, nom: e.target.value}) }),
-                  React.createElement("input", { type: "text", placeholder: "Adresse *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.adresse, onChange: e => setClientInfo({...clientInfo, adresse: e.target.value}) }),
-                  React.createElement("input", { type: "tel", placeholder: "Téléphone *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.telephone, onChange: e => setClientInfo({...clientInfo, telephone: e.target.value}) }),
-                  React.createElement("textarea", { placeholder: "Commentaire (optionnel)", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8] resize-none", rows: 2, value: clientInfo.commentaire, onChange: e => setClientInfo({...clientInfo, commentaire: e.target.value}) })
-                ),
-                React.createElement("div", { className: "flex gap-3 mt-4" },
-                  React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "flex-1" }, "Fermer"),
-                  React.createElement(Button, { onClick: validateOrder, className: "flex-1" }, "Valider la commande")
-                )
+                React.createElement(Button, { variant: "secondary", onClick: () => { setShowDataPanel(false); setSelectedBrandForData(''); }, className: "mt-4" }, "Retour")
               )
-          )
-        ),
-        React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => setModals(prev => ({ ...prev, orders: false })) },
-          React.createElement("div", { className: "flex justify-between items-center mb-4" },
-            React.createElement("h2", { className: `text-[${THEME.colors.primary}] font-semibold text-lg` }, "Commandes"),
-            React.createElement("button", { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}] text-lg transition-colors` }, "✕")
           ),
-          React.createElement("div", { className: `flex gap-2 mb-4 border-b border-[${THEME.colors.border}]` },
-            React.createElement("button", { onClick: () => setOrderTab('received'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'received' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Reçues"),
-            React.createElement("button", { onClick: () => setOrderTab('processing'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'processing' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Traitées"),
-            React.createElement("button", { onClick: () => setOrderTab('delivered'), className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'delivered' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Livrées")
-          ),
-          orders.filter(order => order.status === orderTab).length === 0 ?
-            React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center py-4` }, "Aucune commande dans cet onglet.")
-          :
-            React.createElement("div", { className: "space-y-4" },
-              orders.filter(order => order.status === orderTab).map(order => React.createElement("div", { key: order.id, className: `border border-[${THEME.colors.border}] rounded-xl p-4 bg-[${THEME.colors.cardBg}]` },
-                React.createElement("div", { className: "flex justify-between items-center" },
-                  React.createElement("span", { className: `font-medium text-[${THEME.colors.primary}]` }, "Commande de ", (order.client && order.client.nom) || order.id),
-                  React.createElement("span", { className: `text-sm text-[${THEME.colors.textMuted}]` }, order.date)
-                ),
-                order.client && React.createElement("div", { className: "text-sm text-[#9CA3AF] mb-2 mt-1" },
-                  React.createElement("p", null, "Client : ", order.client.nom),
-                  React.createElement("p", null, "Adresse : ", order.client.adresse),
-                  React.createElement("p", null, "Tél : ", order.client.telephone),
-                  order.client.commentaire && React.createElement("p", { className: "italic" }, "Note : ", order.client.commentaire)
-                ),
-                order.items.map(item => React.createElement("div", { key: item.id, className: `flex justify-between text-sm text-[${THEME.colors.text}] border-b border-[${THEME.colors.border}] py-1` },
-                  React.createElement("span", null, item.name, " x", item.quantity),
-                  showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}]` }, item.quantity * item.price * item.packQty, " DZD") : React.createElement("span", null, "-")
-                )),
-                React.createElement("div", { className: "flex justify-between items-center mt-2" },
-                  React.createElement("span", { className: `font-semibold text-[${THEME.colors.text}]` }, showPrices ? "Total: " + order.total + " DZD" : "Total: -"),
-                  React.createElement("div", { className: "flex gap-2" },
-                    orderTab === 'received' && React.createElement(React.Fragment, null,
-                      React.createElement("button", { onClick: () => handleProcess(order.id), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Traiter"),
-                      React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
-                    ),
-                    orderTab === 'processing' && React.createElement(React.Fragment, null,
-                      React.createElement("button", { onClick: () => handleDeliver(order.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Livrer"),
-                      React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
-                    )
-                  )
-                )
-              )),
-              React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, orders: false })), className: "mt-4" }, "Fermer")
-            )
-        ),
-        React.createElement(Modal, { isOpen: modals.notifications, title: "Notifications ntfy", onClose: () => setModals(prev => ({ ...prev, notifications: false })) },
-          React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "NTFY Topic :"),
-          React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: ntfyTopic, onChange: e => setNtfyTopic(e.target.value.trim()), placeholder: "Entrez le topic ntfy" }),
-          React.createElement("div", { className: "flex gap-3 mt-2" },
-            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, notifications: false })) }, DICT.UI.BTN_CANCEL),
-            React.createElement(Button, { onClick: testNtfy }, "Tester")
-          )
-        ),
-        React.createElement(Modal, { isOpen: modals.advancedOptions, title: "Options avancées", onClose: () => setModals(prev => ({ ...prev, advancedOptions: false })) },
-          React.createElement("div", { className: "flex flex-col gap-3" },
-            React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, imgbb: true })); } }, "Banque d'images"),
-            React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, notifications: true })); } }, "Notifications"),
-            React.createElement("div", { className: "flex flex-col gap-2" },
-              React.createElement(Button, { variant: "secondary", onClick: () => { logoInputRef.current.click(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Uploader un logo"),
-              React.createElement("input", { type: "file", ref: logoInputRef, accept: "image/*", onChange: handleLogoUpload, className: "hidden" }),
-              React.createElement("div", { className: "flex items-center gap-2 mt-2" },
-                React.createElement("input", {
-                  type: "text",
-                  className: `flex-1 p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`,
-                  placeholder: "ou entrez l'URL du logo",
-                  value: logoUrlInput,
-                  onChange: e => setLogoUrlInput(e.target.value)
-                }),
-                React.createElement("button", { onClick: handleLogoUrlSubmit, className: "px-4 py-3 bg-[#E8F04F] text-[#0E1B2D] rounded-xl font-medium hover:brightness-110 transition whitespace-nowrap" }, "Appliquer URL")
-              )
+          React.createElement(Modal, { isOpen: modals.brandSelect, title: "Choisir Marque", onClose: () => setModals(prev => ({ ...prev, brandSelect: false })) },
+            React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" },
+              brands.map(b => React.createElement("button", {
+                key: b.id,
+                onClick: () => { setNewProduct({ ...newProduct, brandId: b.id }); setModals({ brandSelect: false, product: true, brand: false, manage: false }); },
+                className: `p-3 bg-[${THEME.colors.inputBg}] rounded-xl text-[${THEME.colors.text}] hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}]`
+              }, b.name))
             ),
-            React.createElement(Button, { variant: "secondary", onClick: () => { handleTitleChange(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Titre"),
-            React.createElement(Button, { variant: "secondary", onClick: () => { openManageAdmins(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Admins")
+            React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, brandSelect: false })) }, DICT.UI.BTN_CANCEL)
+          ),
+          React.createElement(Modal, { isOpen: modals.product, title: "Nouveau Produit", onClose: () => setModals(prev => ({ ...prev, product: false })) },
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Nom"),
+            React.createElement("input", { type: "text", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, name: e.target.value }) }),
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Pack"),
+            React.createElement("input", { type: "number", className: `w-full p-3 mb-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, qty: e.target.value }) }),
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Prix unitaire (DZD)"),
+            React.createElement("input", { type: "number", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, onChange: e => setNewProduct({ ...newProduct, price: e.target.value }) }),
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Image"),
+            React.createElement(ImageUpload, { onUpload: handleFormImageUpload(setNewProduct, newProduct) }),
+            React.createElement("div", { className: "flex gap-3 mt-4" },
+              React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, product: false })) }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: addProduct }, "Ajouter")
+            )
+          ),
+          React.createElement(Modal, { isOpen: modals.imgbb, title: "Banque d'images - API imgbb", onClose: () => setModals(prev => ({ ...prev, imgbb: false })) },
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "Clé API imgbb"),
+            React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: imgbbApiKey, onChange: e => setImgbbApiKey(e.target.value), placeholder: "Entrez votre clé API" }),
+            React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}] mb-4` }, "Les images seront hébergées sur imgbb."),
+            React.createElement("div", { className: "flex gap-3" },
+              React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, imgbb: false })) }, "Enregistrer")
+            )
+          ),
+          React.createElement(Modal, { isOpen: modals.productDetail, title: "Détail du produit", onClose: () => setModals(prev => ({ ...prev, productDetail: false })) },
+            selectedProduct && React.createElement(React.Fragment, null,
+              React.createElement("div", { className: "flex flex-col items-center mb-5" },
+                React.createElement("div", { className: `w-48 h-48 rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] mb-3` },
+                  selectedProduct.image ? React.createElement("img", { src: selectedProduct.image, className: "w-full h-full object-cover" }) : React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "IMAGE")
+                ),
+                React.createElement("h3", { className: `text-lg font-semibold text-[${THEME.colors.primary}]` }, selectedProduct.name),
+                React.createElement("p", { className: `text-sm text-[${THEME.colors.text}]` }, "Marque : ", selectedProduct.brandName),
+                showPrices && React.createElement("p", { className: `text-sm text-[${THEME.colors.secondary}]` }, "Prix unitaire : ", selectedProduct.price, " DZD"),
+                React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}]` }, "Contenu du pack : ", selectedProduct.qty, " unités")
+              ),
+              React.createElement("div", { className: "flex items-center justify-center gap-3 mb-5" },
+                React.createElement("label", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, "Nombre de packs :"),
+                React.createElement("div", { className: "flex items-center gap-2" },
+                  React.createElement("button", { onClick: () => updateQuantity(productQuantity - 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
+                  React.createElement("input", {
+                    type: "text",
+                    inputMode: "numeric",
+                    pattern: "[0-9]*",
+                    value: productQuantityInput,
+                    onChange: e => handleQuantityInputChange(e.target.value),
+                    onBlur: handleQuantityInputBlur,
+                    onFocus: e => e.target.select(),
+                    className: `w-20 text-center font-medium text-[${THEME.colors.text}] bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] rounded-lg py-1.5 focus:border-[${THEME.colors.primary}] outline-none transition`
+                  }),
+                  React.createElement("button", { onClick: () => updateQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
+                )
+              ),
+              React.createElement("div", { className: "flex gap-3" },
+                React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, productDetail: false })) }, DICT.UI.BTN_CANCEL),
+                React.createElement(Button, { onClick: addToCart }, "Ajouter au panier")
+              )
+            )
+          ),
+          React.createElement(Modal, { isOpen: modals.cart, title: "Mon panier", onClose: () => setModals(prev => ({ ...prev, cart: false })) },
+            React.createElement("div", { className: "space-y-4" },
+              cart.length === 0 ?
+                React.createElement(React.Fragment, null,
+                  React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center` }, "Votre panier est vide."),
+                  React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "mt-4" }, "Fermer")
+                )
+              :
+                React.createElement(React.Fragment, null,
+                  React.createElement("div", { className: `border-b border-[${THEME.colors.border}] pb-2` },
+                    React.createElement("div", { className: `grid ${showPrices ? 'grid-cols-4' : 'grid-cols-2'} gap-2 text-xs font-semibold text-[${THEME.colors.textMuted}] uppercase tracking-wider` },
+                      React.createElement("span", null, "Produit"),
+                      React.createElement("span", { className: "text-center" }, "Qté"),
+                      showPrices && React.createElement("span", { className: "text-right" }, "Prix"),
+                      showPrices && React.createElement("span", { className: "text-right" }, "Total")
+                    )
+                  ),
+                  React.createElement("div", { className: "space-y-3 max-h-60 overflow-y-auto pr-1" },
+                    cart.map(item => {
+                      const totalItem = item.quantity * item.price * item.packQty;
+                      return React.createElement("div", {
+                        key: item.id,
+                        className: `flex items-center bg-[${THEME.colors.cardBg}] p-3 rounded-xl border border-[${THEME.colors.border}] shadow-sm`
+                      },
+                        React.createElement("div", { className: "flex-1 min-w-0" },
+                          React.createElement("p", { className: `font-medium text-[${THEME.colors.text}] truncate` }, item.name),
+                          React.createElement("p", { className: `text-xs text-[${THEME.colors.textMuted}]` }, item.packQty, " unités/pack")
+                        ),
+                        React.createElement("div", { className: `w-12 text-center text-sm text-[${THEME.colors.text}]` }, item.quantity),
+                        showPrices && React.createElement("div", { className: `w-16 text-right text-sm text-[${THEME.colors.secondary}]` }, item.price + " DZD"),
+                        showPrices && React.createElement("div", { className: `w-20 text-right text-sm font-medium text-[${THEME.colors.text}] flex items-center justify-end gap-2` },
+                          totalItem + " DZD",
+                          React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 active:scale-90" }, "✕")
+                        ),
+                        !showPrices && React.createElement("button", { onClick: () => removeFromCart(item.id), className: "text-rose-400 hover:text-rose-300 transition-colors text-sm px-1 ml-2 active:scale-90" }, "✕")
+                      );
+                    })
+                  ),
+                  showPrices && React.createElement("div", { className: `border-t border-[${THEME.colors.border}] pt-3 mt-2` },
+                    React.createElement("div", { className: "flex justify-between items-center" },
+                      React.createElement("span", { className: `text-sm font-medium text-[${THEME.colors.textMuted}]` }, "Total général"),
+                      React.createElement("span", { className: `text-lg font-bold text-[${THEME.colors.primary}]` }, getTotalPrice() + " DZD")
+                    )
+                  ),
+                  React.createElement("div", { className: "space-y-3 mt-4 border-t border-[#3A4A5F] pt-4" },
+                    React.createElement("label", { className: "block text-xs font-medium text-[#9CA3AF] uppercase tracking-wider" }, "Informations de livraison"),
+                    React.createElement("input", { type: "text", placeholder: "Nom complet *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.nom, onChange: e => setClientInfo({...clientInfo, nom: e.target.value}) }),
+                    React.createElement("input", { type: "text", placeholder: "Adresse *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.adresse, onChange: e => setClientInfo({...clientInfo, adresse: e.target.value}) }),
+                    React.createElement("input", { type: "tel", placeholder: "Téléphone *", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8]", value: clientInfo.telephone, onChange: e => setClientInfo({...clientInfo, telephone: e.target.value}) }),
+                    React.createElement("textarea", { placeholder: "Commentaire (optionnel)", className: "w-full p-3 bg-[#1E2F44] rounded-xl border border-[#3A4A5F] focus:border-[#E8F04F] outline-none transition text-[#F0F4F8] resize-none", rows: 2, value: clientInfo.commentaire, onChange: e => setClientInfo({...clientInfo, commentaire: e.target.value}) })
+                  ),
+                  React.createElement("div", { className: "flex gap-3 mt-4" },
+                    React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, cart: false })), className: "flex-1" }, "Fermer"),
+                    React.createElement(Button, { onClick: validateOrder, className: "flex-1" }, "Valider la commande")
+                  )
+                )
+            )
+          ),
+          React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => { setModals(prev => ({ ...prev, orders: false })); setExpandedOrderId(null); } },
+            React.createElement("div", { className: `flex gap-2 mb-4 border-b border-[${THEME.colors.border}]` },
+              React.createElement("button", { onClick: () => { setOrderTab('received'); setExpandedOrderId(null); }, className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'received' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Reçues"),
+              React.createElement("button", { onClick: () => { setOrderTab('processing'); setExpandedOrderId(null); }, className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'processing' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Traitées"),
+              React.createElement("button", { onClick: () => { setOrderTab('delivered'); setExpandedOrderId(null); }, className: `px-3 py-2 text-sm font-medium rounded-t-lg transition ${orderTab === 'delivered' ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}]` : `text-[${THEME.colors.textMuted}] hover:text-[${THEME.colors.text}]`}` }, "Livrées")
+            ),
+            sortedOrders.length === 0 ?
+              React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center py-4` }, "Aucune commande dans cet onglet.")
+            :
+              React.createElement("div", { className: "space-y-3" },
+                sortedOrders.map(order => {
+                  const isExpanded = expandedOrderId === order.id;
+                  const clientName = (order.client && order.client.nom) || 'Client #' + String(order.id).slice(-4);
+                  return React.createElement("div", {
+                    key: order.id,
+                    className: `border border-[${THEME.colors.border}] rounded-xl bg-[${THEME.colors.cardBg}] overflow-hidden`
+                  },
+                    React.createElement("button", {
+                      onClick: () => setExpandedOrderId(isExpanded ? null : order.id),
+                      className: `w-full flex justify-between items-center p-4 text-left transition ${isExpanded ? 'bg-white/5' : ''}`
+                    },
+                      React.createElement("div", { className: "flex-1 min-w-0 pr-2" },
+                        React.createElement("p", { className: `font-medium text-[${THEME.colors.text}] truncate` }, clientName),
+                        React.createElement("p", { className: `text-xs text-[${THEME.colors.textMuted}] mt-0.5 truncate` }, formatOrderDate(order))
+                      ),
+                      React.createElement("span", {
+                        className: `text-[${THEME.colors.textMuted}] text-xs flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`
+                      }, "▼")
+                    ),
+                    isExpanded && React.createElement("div", { className: `border-t border-[${THEME.colors.border}] p-4 space-y-2 animate-slide-up` },
+                      order.client && React.createElement("div", { className: "text-sm text-[#9CA3AF] space-y-0.5" },
+                        order.client.adresse && React.createElement("p", null, "Adresse : ", order.client.adresse),
+                        order.client.telephone && React.createElement("p", null, "Tél : ", order.client.telephone),
+                        order.client.commentaire && React.createElement("p", { className: "italic" }, "Note : ", order.client.commentaire)
+                      ),
+                      order.items.map(item => React.createElement("div", { key: item.id, className: `flex justify-between text-sm text-[${THEME.colors.text}] border-b border-[${THEME.colors.border}] py-1` },
+                        React.createElement("span", { className: "truncate pr-2" }, item.name, " x", item.quantity),
+                        showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}] flex-shrink-0` }, item.quantity * item.price * item.packQty, " DZD") : React.createElement("span", { className: "flex-shrink-0" }, "-")
+                      )),
+                      React.createElement("div", { className: "flex justify-between items-center mt-3 flex-wrap gap-2" },
+                        React.createElement("span", { className: `font-semibold text-[${THEME.colors.text}]` }, showPrices ? "Total: " + order.total + " DZD" : "Total: -"),
+                        React.createElement("div", { className: "flex gap-2" },
+                          orderTab === 'received' && React.createElement(React.Fragment, null,
+                            React.createElement("button", { onClick: () => handleProcess(order.id), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Traiter"),
+                            React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
+                          ),
+                          orderTab === 'processing' && React.createElement(React.Fragment, null,
+                            React.createElement("button", { onClick: () => handleDeliver(order.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Livrer"),
+                            React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
+                          )
+                        )
+                      )
+                    )
+                  );
+                }),
+                React.createElement(Button, { onClick: () => { setModals(prev => ({ ...prev, orders: false })); setExpandedOrderId(null); }, className: "mt-4" }, "Fermer")
+              )
+          ),
+          React.createElement(Modal, { isOpen: modals.notifications, title: "Notifications ntfy", onClose: () => setModals(prev => ({ ...prev, notifications: false })) },
+            React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "NTFY Topic :"),
+            React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: ntfyTopic, onChange: e => setNtfyTopic(e.target.value.trim()), placeholder: "Entrez le topic ntfy" }),
+            React.createElement("div", { className: "flex gap-3 mt-2" },
+              React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, notifications: false })) }, DICT.UI.BTN_CANCEL),
+              React.createElement(Button, { onClick: testNtfy }, "Tester")
+            )
+          ),
+          React.createElement(Modal, { isOpen: modals.advancedOptions, title: "Options avancées", onClose: () => setModals(prev => ({ ...prev, advancedOptions: false })) },
+            React.createElement("div", { className: "flex flex-col gap-3" },
+              React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, imgbb: true })); } }, "Banque d'images"),
+              React.createElement(Button, { variant: "secondary", onClick: () => { setModals(prev => ({ ...prev, advancedOptions: false, notifications: true })); } }, "Notifications"),
+              React.createElement("div", { className: "flex flex-col gap-2" },
+                React.createElement(Button, { variant: "secondary", onClick: () => { logoInputRef.current.click(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Uploader un logo"),
+                React.createElement("input", { type: "file", ref: logoInputRef, accept: "image/*", onChange: handleLogoUpload, className: "hidden" }),
+                React.createElement("div", { className: "flex items-center gap-2 mt-2" },
+                  React.createElement("input", {
+                    type: "text",
+                    className: `flex-1 min-w-0 p-3 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}] text-sm`,
+                    placeholder: "URL du logo",
+                    value: logoUrlInput,
+                    onChange: e => setLogoUrlInput(e.target.value)
+                  }),
+                  React.createElement("button", {
+                    onClick: handleLogoUrlSubmit,
+                    className: "flex-shrink-0 px-4 py-3 bg-[#E8F04F] text-[#0E1B2D] rounded-xl font-medium text-sm hover:brightness-110 transition active:scale-95"
+                  }, "OK")
+                )
+              ),
+              React.createElement(Button, { variant: "secondary", onClick: () => { handleTitleChange(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Titre"),
+              React.createElement(Button, { variant: "secondary", onClick: () => { openManageAdmins(); setModals(prev => ({ ...prev, advancedOptions: false })); } }, "Admins"),
+              React.createElement(Button, {
+                variant: "secondary",
+                onClick: () => { migrateOrderDates(); setModals(prev => ({ ...prev, advancedOptions: false })); }
+              }, "Migrer les dates")
+            )
           )
-        )
-      );
+        );
+      };
 
       // ----- RENDU PRINCIPAL -----
       if (loading) {
@@ -1311,7 +1685,8 @@
                 React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, brandSelect: true })) }, "+ Ajouter un produit"),
                 React.createElement(Button, { variant: "danger", onClick: () => setModals(prev => ({ ...prev, manage: true })) }, "Gérer"),
                 React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, orders: true })) }, "Commandes"),
-                React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, advancedOptions: true })) }, "Options avancées")
+                React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, advancedOptions: true })) }, "Options avancées"),
+                React.createElement(Button, { variant: "secondary", onClick: () => { setStatsPeriod(8); setShowAllClients(false); setModals(prev => ({ ...prev, stats: true })); } }, "Statistiques")
               )
             :
               React.createElement("div", { className: "grid grid-cols-2 gap-4" },
@@ -1414,7 +1789,6 @@
     window.reactRoot.render(React.createElement(App, null));
   </script>
 
-  <!-- Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').then(reg => {
