@@ -1493,7 +1493,7 @@
                 showPrices && React.createElement("p", { className: `text-sm text-[${THEME.colors.secondary}]` }, "Prix unitaire : ", selectedProduct.price, " DZD"),
                 React.createElement("p", { className: `text-sm text-[${THEME.colors.textMuted}]` }, "Contenu du pack : ", selectedProduct.qty, " unités")
               ),
-              React.createElement("div", { className: "flex items-center justify-center gap-3 mb-5" },
+              React.createElement("div", { className: "flex items-center justify-center gap-3 mb-3" },
                 React.createElement("label", { className: `text-[${THEME.colors.text}] font-medium text-sm` }, "Nombre de packs :"),
                 React.createElement("div", { className: "flex items-center gap-2" },
                   React.createElement("button", { onClick: () => updateQuantity(productQuantity - 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "-"),
@@ -1508,6 +1508,15 @@
                     className: `w-20 text-center font-medium text-[${THEME.colors.text}] bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] rounded-lg py-1.5 focus:border-[${THEME.colors.primary}] outline-none transition`
                   }),
                   React.createElement("button", { onClick: () => updateQuantity(productQuantity + 1), className: `w-8 h-8 rounded-full bg-[${THEME.colors.inputBg}] text-[${THEME.colors.primary}] font-medium text-lg flex items-center justify-center hover:bg-[${THEME.colors.cardBg}] transition border border-[${THEME.colors.border}] active:scale-95` }, "+")
+                )
+              ),
+              React.createElement("div", { className: "flex items-center justify-center flex-wrap gap-2 mb-5" },
+                [5, 10, 20, 30, 50].map(q =>
+                  React.createElement("button", {
+                    key: q,
+                    onClick: () => updateQuantity(q),
+                    className: `min-w-[44px] px-2.5 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 border ${productQuantity === q ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `bg-[${THEME.colors.inputBg}] text-[${THEME.colors.text}] border-[${THEME.colors.border}] hover:bg-[${THEME.colors.cardBg}]`}`
+                  }, q)
                 )
               ),
               React.createElement("div", { className: "flex gap-3" },
