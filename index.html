@@ -137,16 +137,19 @@
         React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm text-center` }, brand.name)
       );
 
-    const ProductCard = ({ product, onClick, showPrices }) =>
-      React.createElement("div", { className: "flex flex-col items-center gap-1 cursor-pointer", onClick },
-        React.createElement("div", { className: `w-full aspect-square rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] transition-opacity hover:opacity-80 active:scale-[0.98]` },
-          product.image ? React.createElement("img", { src: product.image, className: "w-full h-full object-cover" }) :
-          React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs font-medium` }, "PROD")
-        ),
-        React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm text-center` }, product.name),
-        showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}] text-xs` }, "Prix: ", product.price, " DZD") : null,
-        React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "Pack: ", product.qty, " unités")
-      );
+const ProductCard = ({ product, onClick, showPrices, selectable, selected }) =>
+  React.createElement("div", { className: "flex flex-col items-center gap-1 cursor-pointer relative", onClick },
+    selectable && React.createElement("div", {
+      className: `absolute top-2 right-2 z-10 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${selected ? 'bg-[#E8F04F] text-[#0E1B2D] border-[#E8F04F]' : 'bg-[#0E1B2D]/60 text-transparent border-[#E8F04F]'}`
+    }, "✔"),
+    React.createElement("div", { className: `w-full aspect-square rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border transition-opacity hover:opacity-80 active:scale-[0.98] ${selected ? 'border-[#E8F04F] border-2' : `border-[${THEME.colors.border}]`}` },
+      product.image ? React.createElement("img", { src: product.image, className: "w-full h-full object-cover" }) :
+      React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs font-medium` }, "PROD")
+    ),
+    React.createElement("span", { className: `text-[${THEME.colors.text}] font-medium text-sm text-center` }, product.name),
+    showPrices ? React.createElement("span", { className: `text-[${THEME.colors.secondary}] text-xs` }, "Prix: ", product.price, " DZD") : null,
+    React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "Pack: ", product.qty, " unités")
+  );
 
     const Toast = ({ message, type, onClose }) => {
       if (!message) return null;
@@ -295,11 +298,11 @@
         setToast({ message: '', type: 'info', visible: false });
       };
 
-      const [modals, setModals] = useState({
-        brand: false, product: false, brandSelect: false, manage: false,
-        imgbb: false, productDetail: false, cart: false, orders: false, notifications: false,
-        advancedOptions: false, stats: false
-      });
+const [modals, setModals] = useState({
+  brand: false, product: false, brandSelect: false, manage: false,
+  imgbb: false, productDetail: false, cart: false, orders: false, notifications: false,
+  advancedOptions: false, stats: false, compilations: false
+});
       const [editingProduct, setEditingProduct] = useState(null);
       const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
       const [showDataPanel, setShowDataPanel] = useState(false);
@@ -314,6 +317,7 @@
       const [productQuantityInput, setProductQuantityInput] = useState('1');
       const [orderTab, setOrderTab] = useState('received');
       const [expandedOrderId, setExpandedOrderId] = useState(null);
+      const [compilationMode, setCompilationMode] = useState(false);
 
       const [cart, setCart] = useState(() => {
         const saved = localStorage.getItem('cart');
@@ -335,6 +339,128 @@
 
       const [ntfyTopic, setNtfyTopic] = useState(() => localStorage.getItem('ntfy_topic') || 'ldholdingnotif');
       useEffect(() => localStorage.setItem('ntfy_topic', ntfyTopic), [ntfyTopic]);
+const [compilationGroups, setCompilationGroups] = useState([]);
+
+useEffect(() => {
+  try {
+    const groupsRef = firebase.database().ref('compilationGroups');
+    const groupsListener = groupsRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const groupsArray = Object.keys(data).map(key => ({
+          id: key,
+          ...data[key],
+          items: Array.isArray(data[key].items) ? data[key].items : []
+        }));
+        setCompilationGroups(groupsArray);
+      } else {
+        setCompilationGroups([]);
+      }
+    });
+    return () => groupsRef.off('value', groupsListener);
+  } catch (err) {
+    console.error('Erreur listener compilationGroups:', err);
+  }
+}, []);
+
+const [isSelectingProducts, setIsSelectingProducts] = useState(false);
+const [selectedForCompilation, setSelectedForCompilation] = useState([]);
+
+useEffect(() => {
+  setIsSelectingProducts(false);
+  setSelectedForCompilation([]);
+}, [currentView, selectedBrand]);
+const toggleCompilationProduct = (productId) => {
+  setSelectedForCompilation(prev =>
+    prev.includes(productId)
+      ? prev.filter(id => id !== productId)
+      : [...prev, productId]
+  );
+};
+const handleAddCompilation = () => {
+  setIsSelectingProducts(true);
+  setSelectedForCompilation([]);
+};
+const handleCancelCompilation = () => {
+  setIsSelectingProducts(false);
+  setSelectedForCompilation([]);
+};
+const handleValidateCompilation = () => {
+  if (!selectedBrand) { showToast("Aucune marque sélectionnée.", "error"); return; }
+  if (selectedForCompilation.length === 0) { showToast("Sélectionnez au moins un produit.", "error"); return; }
+  const items = (selectedBrand.products || [])
+    .filter(p => selectedForCompilation.includes(p.id))
+    .map(p => ({
+      productId: p.id,
+      name: p.name,
+      image: p.image || null,
+      price: p.price,
+      qty: p.qty
+    }));
+  if (items.length === 0) { showToast("Aucun produit valide.", "error"); return; }
+  const newGroup = {
+    name: `Groupe ${compilationGroups.length + 1}`,
+    brandId: selectedBrand.id,
+    brandName: selectedBrand.name,
+    items,
+    timestamp: Date.now()
+  };
+  firebase.database().ref('compilationGroups').push(newGroup)
+    .then(() => {
+      setIsSelectingProducts(false);
+      setSelectedForCompilation([]);
+      showToast(`Groupe de ${items.length} produit(s) créé.`, "success");
+    })
+    .catch(err => {
+      console.error('Erreur création groupe compilation:', err);
+      showToast("Erreur lors de la création du groupe.", "error");
+    });
+};
+const deleteCompilationGroup = (groupId) => {
+  firebase.database().ref('compilationGroups').child(groupId).remove()
+    .then(() => showToast("Groupe supprimé.", "info"))
+    .catch(err => {
+      console.error('Erreur suppression groupe compilation:', err);
+      showToast("Erreur lors de la suppression du groupe.", "error");
+    });
+};
+const removeProductFromCompilationGroup = (groupId, productId) => {
+  const group = compilationGroups.find(g => g.id === groupId);
+  if (!group) return;
+  const updatedItems = group.items.filter(it => it.productId !== productId);
+  firebase.database().ref('compilationGroups').child(groupId).update({ items: updatedItems })
+    .then(() => showToast("Produit retiré du groupe.", "info"))
+    .catch(err => {
+      console.error('Erreur retrait produit groupe:', err);
+      showToast("Erreur lors du retrait du produit.", "error");
+    });
+};
+const addProductToCompilationGroup = (groupId, productId) => {
+  const group = compilationGroups.find(g => g.id === groupId);
+  if (!group) return;
+  if (group.items.some(it => it.productId === productId)) {
+    showToast("Ce produit est déjà dans le groupe.", "info");
+    return;
+  }
+  const brand = brands.find(b => b.id === group.brandId);
+  if (!brand) { showToast("Marque introuvable.", "error"); return; }
+  const product = (brand.products || []).find(p => p.id === productId);
+  if (!product) { showToast("Produit introuvable.", "error"); return; }
+  const newItem = {
+    productId: product.id,
+    name: product.name,
+    image: product.image || null,
+    price: product.price,
+    qty: product.qty
+  };
+  const updatedItems = [...group.items, newItem];
+  firebase.database().ref('compilationGroups').child(groupId).update({ items: updatedItems })
+    .then(() => showToast("Produit ajouté au groupe.", "success"))
+    .catch(err => {
+      console.error('Erreur ajout produit groupe:', err);
+      showToast("Erreur lors de l'ajout du produit.", "error");
+    });
+};
 
       const getOrderTimestamp = (order) => {
         if (!order) return null;
@@ -847,11 +973,30 @@
       };
 
       const openProductDetail = (product, brand) => {
+        if (compilationMode) return;
         setSelectedProduct({ ...product, brandName: brand.name, brandId: brand.id });
         setProductQuantity(1);
         setProductQuantityInput('1');
         setModals(prev => ({ ...prev, productDetail: true }));
       };
+const getCompilationSiblings = (product) => {
+  if (!product || !product.id) return [];
+  const siblings = new Map();
+  compilationGroups.forEach(group => {
+    const contains = group.items.some(it => it.productId === product.id);
+    if (!contains) return;
+    const brand = brands.find(b => b.id === group.brandId);
+    if (!brand) return;
+    group.items.forEach(it => {
+      if (it.productId === product.id) return;
+      if (siblings.has(it.productId)) return;
+      const fullProduct = (brand.products || []).find(p => p.id === it.productId);
+      if (!fullProduct) return;
+      siblings.set(it.productId, { ...fullProduct, brandId: group.brandId, brandName: group.brandName });
+    });
+  });
+  return Array.from(siblings.values());
+};
 
       const updateQuantity = (newQty) => {
         const qty = Math.max(1, Math.floor(Number(newQty) || 1));
@@ -1314,6 +1459,75 @@
           }, "Fermer")
         );
       };
+const renderCompilationsModal = () => {
+  if (!modals.compilations) return null;
+  return React.createElement(Modal, {
+    isOpen: modals.compilations,
+    title: "Compilations",
+    onClose: () => setModals(prev => ({ ...prev, compilations: false }))
+  },
+    compilationGroups.length === 0
+      ? React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-center py-4` }, "Aucun groupe créé pour le moment.")
+      : React.createElement("div", { className: "space-y-3 max-h-[60vh] overflow-y-auto" },
+          compilationGroups.map(group => {
+            const brand = brands.find(b => b.id === group.brandId);
+            const availableProducts = ((brand && brand.products) || []).filter(p => !group.items.some(it => it.productId === p.id));
+            return React.createElement("div", {
+              key: group.id,
+              className: `bg-[${THEME.colors.cardBg}] border border-[${THEME.colors.border}] rounded-xl p-3`
+            },
+              React.createElement("div", { className: "flex justify-between items-center mb-2" },
+                React.createElement("div", { className: "flex flex-col min-w-0" },
+                  React.createElement("span", { className: `text-[${THEME.colors.primary}] font-semibold text-sm truncate` }, group.name),
+                  React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, group.brandName, " • ", group.items.length, " produit(s)")
+                ),
+                React.createElement("button", {
+                  onClick: () => deleteCompilationGroup(group.id),
+                  className: "text-rose-400 hover:text-rose-300 text-sm px-2 flex-shrink-0"
+                }, "✕")
+              ),
+              group.items.length === 0
+                ? React.createElement("p", { className: `text-[${THEME.colors.textMuted}] text-xs text-center py-2` }, "Aucun produit dans ce groupe.")
+                : React.createElement("div", { className: "grid grid-cols-4 gap-2 mb-2" },
+                    group.items.map(item =>
+                      React.createElement("div", {
+                        key: item.productId,
+                        className: "flex flex-col items-center gap-1"
+                      },
+                        React.createElement("div", { className: `w-full aspect-square rounded-lg overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] relative` },
+                          item.image
+                            ? React.createElement("img", { src: item.image, className: "w-full h-full object-cover" })
+                            : React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-[9px] font-medium flex items-center justify-center w-full h-full` }, "IMG"),
+                          React.createElement("button", {
+                            onClick: () => removeProductFromCompilationGroup(group.id, item.productId),
+                            className: "absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center hover:bg-rose-600 active:scale-90 transition shadow"
+                          }, "✕")
+                        ),
+                        React.createElement("span", { className: `text-[${THEME.colors.text}] text-[10px] text-center leading-tight` }, item.name)
+                      )
+                    )
+                  ),
+              React.createElement("select", {
+                value: "",
+                onChange: e => {
+                  const val = e.target.value;
+                  if (val) addProductToCompilationGroup(group.id, Number(val));
+                },
+                className: `w-full p-2 bg-[${THEME.colors.inputBg}] rounded-lg border border-[${THEME.colors.border}] text-sm text-[${THEME.colors.text}]`
+              },
+                React.createElement("option", { value: "" }, availableProducts.length === 0 ? "Aucun produit disponible" : "+ Ajouter un produit..."),
+                availableProducts.map(p => React.createElement("option", { key: p.id, value: p.id }, p.name))
+              )
+            );
+          })
+        ),
+    React.createElement(Button, {
+      variant: "secondary",
+      onClick: () => setModals(prev => ({ ...prev, compilations: false })),
+      className: "mt-4"
+    }, "Fermer")
+  );
+};
 
       const renderModals = () => {
         const sortedOrders = orders
@@ -1325,6 +1539,7 @@
             const vb = tb ? tb.getTime() : 0;
             return vb - va;
           });
+const compilationSiblings = selectedProduct ? getCompilationSiblings(selectedProduct) : [];
 
         return React.createElement(React.Fragment, null,
           renderStatsModal(),
@@ -1484,6 +1699,22 @@
           ),
           React.createElement(Modal, { isOpen: modals.productDetail, title: "Détail du produit", onClose: () => setModals(prev => ({ ...prev, productDetail: false })) },
             selectedProduct && React.createElement(React.Fragment, null,
+              compilationSiblings.length > 0 && React.createElement("div", { className: "mb-3" },
+                React.createElement("p", { className: `text-[10px] font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-2` }, "Même groupe"),
+                React.createElement("div", { className: "flex gap-2 overflow-x-auto pb-1" },
+                  compilationSiblings.map(sib =>
+                    React.createElement("button", {
+                      key: sib.id,
+                      onClick: () => openProductDetail(sib, { name: sib.brandName, id: sib.brandId }),
+                      className: `w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] hover:opacity-80 active:scale-95 transition`
+                    },
+                      sib.image
+                        ? React.createElement("img", { src: sib.image, className: "w-full h-full object-cover", alt: sib.name })
+                        : React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-[9px] font-medium flex items-center justify-center w-full h-full` }, "IMG")
+                    )
+                  )
+                )
+              ),
               React.createElement("div", { className: "flex flex-col items-center mb-5" },
                 React.createElement("div", { className: `w-48 h-48 rounded-2xl overflow-hidden bg-[${THEME.colors.inputBg}] border border-[${THEME.colors.border}] mb-3` },
                   selectedProduct.image ? React.createElement("img", { src: selectedProduct.image, className: "w-full h-full object-cover" }) : React.createElement("span", { className: `text-[${THEME.colors.textMuted}] text-xs` }, "IMAGE")
@@ -1688,7 +1919,10 @@
         );
       }
 
-      return React.createElement("div", { className: `fixed inset-0 bg-[${THEME.colors.background}] flex justify-center overflow-y-auto` },
+      return React.createElement("div", {
+        className: `fixed inset-0 bg-[${THEME.colors.background}] flex justify-center overflow-y-auto`,
+        style: compilationMode ? { border: '4px solid #EF4444' } : undefined
+      },
         React.createElement("div", { className: `w-full max-w-sm min-h-screen p-5 pb-20 transition-opacity duration-300 ${isTransitioning ? 'opacity-0' : 'opacity-100'}` },
           React.createElement("div", { className: "flex justify-between items-center mb-6" },
             React.createElement("div", { className: "flex items-center gap-2" },
@@ -1712,16 +1946,21 @@
               )
             ),
             React.createElement("div", { className: "flex items-center gap-2" },
-              isAdmin && React.createElement("button", { onClick: togglePrices, className: `w-8 h-8 rounded-full text-xs font-bold border-2 transition-colors flex items-center justify-center active:scale-95 ${showPrices ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `border-[${THEME.colors.border}] text-[${THEME.colors.textMuted}]`}` }, "DZD"),
-              isAdmin && React.createElement("span", { className: `px-3 py-1 text-xs font-medium uppercase rounded-full bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border border-[${THEME.colors.primary}]` }, "Admin")
+              compilationMode && React.createElement("button", {
+                onClick: () => { setCompilationMode(false); setCurrentView(DICT.VIEW.DASHBOARD); setSelectedBrand(null); setIsSelectingProducts(false); setSelectedForCompilation([]); },
+                className: "px-3 py-1 rounded-full bg-red-500 text-white text-xs font-bold hover:bg-red-600 active:scale-95 transition shadow-md"
+              }, "✕ Compilation"),
+              !compilationMode && isAdmin && React.createElement("button", { onClick: togglePrices, className: `w-8 h-8 rounded-full text-xs font-bold border-2 transition-colors flex items-center justify-center active:scale-95 ${showPrices ? `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border-[${THEME.colors.primary}]` : `border-[${THEME.colors.border}] text-[${THEME.colors.textMuted}]`}` }, "DZD"),
+              !compilationMode && isAdmin && React.createElement("span", { className: `px-3 py-1 text-xs font-medium uppercase rounded-full bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] border border-[${THEME.colors.primary}]` }, "Admin")
             )
           ),
           currentView === DICT.VIEW.DASHBOARD ?
-            isAdmin ?
+            (isAdmin && !compilationMode) ?
               React.createElement("div", { className: "flex flex-col gap-3" },
                 React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, brand: true })) }, "+ Ajouter une marque"),
                 React.createElement(Button, { onClick: () => setModals(prev => ({ ...prev, brandSelect: true })) }, "+ Ajouter un produit"),
                 React.createElement(Button, { variant: "danger", onClick: () => setModals(prev => ({ ...prev, manage: true })) }, "Gérer"),
+                React.createElement(Button, { variant: "danger", onClick: () => { setCurrentView(DICT.VIEW.DASHBOARD); setSelectedBrand(null); setCompilationMode(true); } }, "Compilation"),
                 React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, orders: true })) }, "Commandes"),
                 React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, advancedOptions: true })) }, "Options avancées"),
                 React.createElement(Button, { variant: "secondary", onClick: () => { setStatsPeriod(8); setShowAllClients(false); setModals(prev => ({ ...prev, stats: true })); } }, "Statistiques")
@@ -1735,12 +1974,26 @@
               React.createElement("div", { className: "grid grid-cols-2 gap-4" },
                 selectedBrand && selectedBrand.products
                   ? selectedBrand.products.filter(p => !p.hidden).map(prod =>
-                      React.createElement(ProductCard, { key: prod.id, product: prod, onClick: () => openProductDetail(prod, selectedBrand), showPrices })
+                      React.createElement(ProductCard, {
+                        key: prod.id,
+                        product: prod,
+                        onClick: () => {
+                          if (compilationMode && isSelectingProducts) {
+                            toggleCompilationProduct(prod.id);
+                          } else {
+                            openProductDetail(prod, selectedBrand);
+                          }
+                        },
+                        showPrices,
+                        selectable: compilationMode && isSelectingProducts,
+                        selected: selectedForCompilation.includes(prod.id)
+                      })
                     )
                   : React.createElement("p", { className: "text-gray-400 text-center col-span-2" }, "Aucun produit dans cette marque.")
               )
             ),
-          renderModals()
+          renderModals(),
+          renderCompilationsModal()
         ),
         React.createElement(Toast, { message: toast.message, type: toast.type, onClose: hideToast }),
         React.createElement(Modal, { isOpen: showPinModal, title: pinMode === 'verify' ? "Code PIN" : "Créer le premier admin", onClose: () => setShowPinModal(false) },
@@ -1809,7 +2062,7 @@
             )
           )
         ),
-        React.createElement("div", { className: "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-sm px-4" },
+        !compilationMode && React.createElement("div", { className: "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-sm px-4" },
           React.createElement("div", {
             className: `flex items-center justify-between px-4 py-2 rounded-full bg-[#0E1B2D]/80 backdrop-blur-md border border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 ${cart.length === 0 ? 'opacity-50 grayscale' : ''}`
           },
@@ -1818,6 +2071,29 @@
               cart.length > 0 && React.createElement("span", { className: `bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full` }, cart.length)
             ),
             React.createElement("button", { onClick: () => setModals(prev => ({ ...prev, cart: true })), className: "flex items-center gap-2 active:scale-95 transition bg-[#E8F04F] text-[#0E1B2D] px-4 py-1.5 rounded-full font-bold text-sm shadow-md" }, "Commander")
+          )
+        ),
+        compilationMode && currentView === DICT.VIEW.DETAIL && React.createElement("div", { className: "fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-sm px-4" },
+          React.createElement("div", {
+            className: "flex items-center gap-2 px-3 py-2 rounded-full bg-[#0E1B2D]/90 backdrop-blur-md border border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
+          },
+            isSelectingProducts
+              ? React.createElement("button", {
+                  onClick: handleValidateCompilation,
+                  className: "flex-1 py-2 rounded-full font-bold text-sm bg-[#E8F04F] text-[#0E1B2D] hover:brightness-110 active:scale-95 transition shadow-md"
+                }, `Valider (${selectedForCompilation.length})`)
+              : React.createElement("button", {
+                  onClick: handleAddCompilation,
+                  className: "flex-1 py-2 rounded-full font-bold text-sm bg-[#E8F04F] text-[#0E1B2D] hover:brightness-110 active:scale-95 transition shadow-md"
+                }, "+ Ajouter"),
+            isSelectingProducts && React.createElement("button", {
+              onClick: handleCancelCompilation,
+              className: "py-2 px-3 rounded-full text-sm font-bold bg-[#1E2F44] text-[#F0F4F8] border border-[#3A4A5F] hover:brightness-110 active:scale-95 transition"
+            }, "✕"),
+            React.createElement("button", {
+              onClick: () => setModals(prev => ({ ...prev, compilations: true })),
+              className: "flex-1 py-2 rounded-full font-bold text-sm bg-[#3DC59D] text-white hover:brightness-110 active:scale-95 transition shadow-md"
+            }, compilationGroups.length > 0 ? `Compilations (${compilationGroups.length})` : "Compilations")
           )
         )
       );
