@@ -146,21 +146,210 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="msapplication-TileColor" content="#030712">
   <meta name="msapplication-config" content="/browserconfig.xml">
-<meta name="mobile-web-app-capable" content="yes">
-<!-- HUBCODE-SPLASH:START -->
-<link rel="apple-touch-startup-image" href="./splash-640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<link rel="apple-touch-startup-image" href="./splash-1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-<!-- HUBCODE-SPLASH:END -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('light_mode');
+        var light = saved !== null
+          ? saved === 'true'
+          : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+        if (light) {
+          document.documentElement.classList.add('theme-light');
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) metas[i].setAttribute('content', '#F3F5F8');
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    html.theme-light {
+      color-scheme: light;
+    }
+
+    html.theme-light body {
+      background-color: #F3F5F8;
+      color: #142235;
+    }
+
+    html.theme-light .app-bg {
+      background-color: #F3F5F8;
+      background-image:
+        radial-gradient(120% 60% at 50% -10%, rgba(255, 255, 255, 0.9) 0%, rgba(243, 245, 248, 0) 60%),
+        radial-gradient(80% 50% at 100% 100%, rgba(61, 197, 157, 0.06) 0%, rgba(243, 245, 248, 0) 70%);
+    }
+
+    html.theme-light .glass {
+      background: linear-gradient(180deg, #FFFFFF 0%, #FBFCFD 100%);
+      border: 1px solid rgba(15, 30, 50, 0.08);
+      box-shadow:
+        0 1px 2px rgba(15, 30, 50, 0.04),
+        0 8px 20px -12px rgba(15, 30, 50, 0.12);
+    }
+
+    html.theme-light .header-glass {
+      background: rgba(243, 245, 248, 0.82);
+      border-bottom: 1px solid rgba(15, 30, 50, 0.07);
+    }
+
+    html.theme-light .modal-content {
+      background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
+      border-color: rgba(15, 30, 50, 0.08) !important;
+      box-shadow:
+        0 24px 48px -16px rgba(15, 30, 50, 0.25),
+        0 8px 16px -8px rgba(15, 30, 50, 0.12);
+    }
+
+    html.theme-light .skeleton {
+      background: linear-gradient(90deg, rgba(15, 30, 50, 0.05) 25%, rgba(15, 30, 50, 0.09) 50%, rgba(15, 30, 50, 0.05) 75%);
+      background-size: 200% 100%;
+    }
+
+    html.theme-light input,
+    html.theme-light select,
+    html.theme-light textarea {
+      background-color: #FFFFFF;
+      color: #142235;
+      border-color: #D5DCE5;
+    }
+
+    html.theme-light ::placeholder {
+      color: #8790A0 !important;
+    }
+
+    html.theme-light [class~="bg-[#0E1B2D]"] {
+      background-color: #F3F5F8 !important;
+    }
+
+    html.theme-light [class~="bg-[#1E2F44]"] {
+      background-color: #EEF1F5 !important;
+    }
+
+    html.theme-light [class~="bg-[#1A2A3F]"] {
+      background-color: #FFFFFF !important;
+    }
+
+    html.theme-light [class~="bg-[#13233A]/80"],
+    html.theme-light [class~="bg-[#13233A]/85"],
+    html.theme-light [class~="bg-[#13233A]/90"] {
+      background-color: rgba(255, 255, 255, 0.92) !important;
+    }
+
+    html.theme-light [class~="bg-[#07101C]/75"] {
+      background-color: rgba(15, 30, 50, 0.35) !important;
+    }
+
+    html.theme-light [class~="bg-white/[0.03]"],
+    html.theme-light [class~="bg-white/[0.04]"],
+    html.theme-light [class~="bg-white/[0.05]"] {
+      background-color: rgba(15, 30, 50, 0.04) !important;
+    }
+
+    html.theme-light [class~="bg-white/[0.06]"],
+    html.theme-light [class~="bg-white/[0.08]"],
+    html.theme-light [class~="bg-white/[0.09]"],
+    html.theme-light [class~="bg-white/5"],
+    html.theme-light [class~="bg-white/10"] {
+      background-color: rgba(15, 30, 50, 0.07) !important;
+    }
+
+    html.theme-light [class~="bg-white/[0.12]"] {
+      background-color: rgba(15, 30, 50, 0.16) !important;
+    }
+
+    html.theme-light [class~="text-[#F0F4F8]"],
+    html.theme-light [class~="text-[#F0F4F8]/80"],
+    html.theme-light [class~="text-[#F0F4F8]/90"],
+    html.theme-light [class~="hover:text-[#F0F4F8]"]:hover {
+      color: #142235 !important;
+    }
+
+    html.theme-light [class~="text-[#9CA3AF]"],
+    html.theme-light [class~="text-white/40"] {
+      color: #5E6878 !important;
+    }
+
+    html.theme-light [class~="text-[#9CA3AF]/60"],
+    html.theme-light [class~="text-[#9CA3AF]/70"] {
+      color: #8790A0 !important;
+    }
+
+    html.theme-light [class~="text-[#C7CDD6]"] {
+      color: #3F4A5A !important;
+    }
+
+    html.theme-light [class~="text-[#E8F04F]"],
+    html.theme-light [class~="text-[#E8F04F]/90"] {
+      color: #6E7300 !important;
+    }
+
+    html.theme-light [class~="text-[#3DC59D]"],
+    html.theme-light [class~="text-[#7FDCC0]"],
+    html.theme-light [class~="text-[#8FE3CB]"] {
+      color: #157A5B !important;
+    }
+
+    html.theme-light [class~="text-rose-300"],
+    html.theme-light [class~="text-rose-400"] {
+      color: #D9264E !important;
+    }
+
+    html.theme-light [class~="border-[#3A4A5F]"],
+    html.theme-light [class~="border-white/[0.06]"],
+    html.theme-light [class~="border-white/[0.07]"],
+    html.theme-light [class~="border-white/[0.08]"],
+    html.theme-light [class~="border-white/10"],
+    html.theme-light [class~="border-white/15"] {
+      border-color: rgba(15, 30, 50, 0.1) !important;
+    }
+
+    html.theme-light [class~="divide-white/[0.06]"] > :not([hidden]) ~ :not([hidden]) {
+      border-color: rgba(15, 30, 50, 0.08) !important;
+    }
+
+    html.theme-light [class*="rgba(3,8,18"] {
+      box-shadow:
+        0 1px 2px rgba(15, 30, 50, 0.05),
+        0 10px 24px -14px rgba(15, 30, 50, 0.22) !important;
+    }
+
+    html.theme-light [class~="from-[#EEF47A]"] {
+      box-shadow:
+        inset 0 0 0 1px rgba(110, 115, 0, 0.25),
+        0 6px 16px -8px rgba(110, 115, 0, 0.35) !important;
+    }
+
+    html.theme-light [class~="from-[#1A2A3F]"] {
+      background-image: linear-gradient(to top, #FFFFFF, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0)) !important;
+    }
+
+    html.theme-light .media-card [class~="text-[#F0F4F8]"] {
+      color: #F0F4F8 !important;
+    }
+
+    html.theme-light [style*="color: rgb(240, 244, 248)"] {
+      color: #142235 !important;
+    }
+
+    html.theme-light [style*="color: rgb(156, 163, 175)"] {
+      color: #5E6878 !important;
+    }
+
+    html.theme-light [style*="color: rgb(232, 240, 79)"] {
+      color: #6E7300 !important;
+    }
+
+    html.theme-light [style*="color: rgb(61, 197, 157)"] {
+      color: #157A5B !important;
+    }
+
+    html.theme-light [style*="background: rgb(14, 27, 45)"] {
+      background: #E6EAF0 !important;
+    }
+
+    html.theme-light [style*="rgb(58, 74, 95)"] {
+      border-color: #DDE3EA !important;
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -578,6 +767,13 @@ useEffect(() => {
     'info'
   );
 }, [orders]);
+const [lightMode, setLightMode] = useState(() => document.documentElement.classList.contains('theme-light'));
+useEffect(() => {
+  document.documentElement.classList.toggle('theme-light', lightMode);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
+    meta.setAttribute('content', lightMode ? '#F3F5F8' : '#0E1B2D');
+  });
+}, [lightMode]);
       const [editingProduct, setEditingProduct] = useState(null);
       const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
       const [showDataPanel, setShowDataPanel] = useState(false);
@@ -1098,12 +1294,188 @@ const addProductToCompilationGroup = (groupId, productId) => {
 
       const saveBrandEdit = async () => {
         if (!editingBrandId) return;
+  try {
+    const o = {};
+    INJECT_OPTIONS.forEach(function(x) { o[x.key] = injectOpts ? !!injectOpts[x.key] : true; });
+    const chosen = INJECT_OPTIONS.filter(function(x) { return o[x.key]; }).map(function(x) { return x.label; });
+    if (chosen.length === 0) throw new Error('Aucun élément sélectionné');
+    addLog(repo, 'Éléments choisis : ' + chosen.join(', '), 'step');
+    const needHtml = o.manifest || o.head || o.splash || o.sw || o.install || o.signature || o.theme;
+
+    addLog(repo, 'Analyse du dépôt...', 'loading');
+    const listResp = await ghFetch(GH_API + '/repos/' + owner + '/' + repo + '/contents?ref=' + encodeURIComponent(branch), {
+      headers: { 'Authorization': 'token ' + tok }
+    });
+    let names = [];
+    if (listResp.ok) {
+      const items = await listResp.json();
+      if (Array.isArray(items)) names = items.filter(function(i) { return i.type === 'file'; }).map(function(i) { return i.name; });
+    } else if (listResp.status !== 404) {
+      throw new Error('Lecture du dépôt (HTTP ' + listResp.status + ')');
+    }
+    const has = function(n) { return names.indexOf(n) !== -1; };
+    const rep = { added: [], fixed: [], warn: [], notes: [] };
+    const toPush = [];
+    const pushedNames = [];
+    const filePush = function(path, b64) {
+      toPush.push({ path: path, b64: b64 });
+      if (pushedNames.indexOf(path) === -1) pushedNames.push(path);
+    };
+
+    // ---- index.html
+    const htmlFile = has('index.html') ? await hcReadFile(owner, repo, branch, tok, 'index.html') : null;
+    let originalHtml = '';
+    if (htmlFile) {
+      originalHtml = b64ToUtf8(htmlFile.b64);
+      addLog(repo, 'index.html lu', 'success');
+    } else if (needHtml) {
+      addLog(repo, 'index.html introuvable, création minimale', 'warning');
+      originalHtml = '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n<title>' + escapeHtml(repo) + '</title>\n</head>\n<body>\n<h1>' + escapeHtml(repo) + '</h1>\n</body>\n</html>\n';
+      rep.added.push('index.html minimal');
+    }
+    const meta = hcReadHtmlMeta(originalHtml);
+
+    // ---- manifest.json (lecture)
+    const mFile = has('manifest.json') ? await hcReadFile(owner, repo, branch, tok, 'manifest.json') : null;
+    const mText = mFile ? b64ToUtf8(mFile.b64) : null;
+    let pre = null;
+    try { pre = mText ? JSON.parse(mText.replace(/^\uFEFF/, '')) : null; } catch (e) { pre = null; }
+    if (!pre || typeof pre !== 'object' || Array.isArray(pre)) pre = {};
+    const baseBg = (typeof pre.background_color === 'string' && pre.background_color) || '#0b0f14';
+    const baseTheme = meta.theme || (typeof pre.theme_color === 'string' && pre.theme_color) || baseBg;
+    const appName = meta.title || repo;
+    const shortName = ((appName.split(/\s[-—–|:]\s/)[0] || repo).trim().slice(0, 12)) || repo.slice(0, 12);
+    const letter = (appName.trim().charAt(0) || 'A').toUpperCase();
+
+    // ---- icônes
+    addLog(repo, 'Vérification des icônes...', 'loading');
+    const icon512File = has('icon.png') ? await hcReadFile(owner, repo, branch, tok, 'icon.png') : null;
+    let b64_512 = icon512File ? icon512File.b64 : null;
+    let size512 = b64_512 ? hcPngSize(b64_512) : null;
+    let size192 = null;
+
+    if (o.icons) {
+      if (!b64_512) {
+        b64_512 = hcRenderLetterIcon(letter, 512, baseTheme);
+        size512 = { w: 512, h: 512 };
+        filePush('icon.png', b64_512);
+        rep.added.push('icon.png provisoire (lettre ' + letter + ')');
+        rep.notes.push('icon.png absent : icône provisoire créée, utilise ICON pour mettre la tienne');
+      } else if (!size512 || size512.w < 512 || size512.w !== size512.h) {
         try {
-          const updated = { name: editingBrandName, image: editingBrandImage };
-          await firebase.database().ref('brands').child(editingBrandId).update(updated);
-          cancelEditBrand();
-          showToast("Marque modifiée avec succès.", "success");
-        } catch (err) { console.error('Erreur saveBrandEdit:', err); showToast('Erreur lors de la modification de la marque.', 'error'); }
+          const imgFix = await loadImageFromSrc('data:image/png;base64,' + b64_512);
+          b64_512 = renderIconPng(imgFix, 512);
+          size512 = { w: 512, h: 512 };
+          filePush('icon.png', b64_512);
+          rep.fixed.push('icon.png remis en PNG carré 512x512');
+        } catch (e) {
+          size512 = null;
+          rep.warn.push('icon.png illisible : utilise le bouton ICON');
+        }
+      }
+    }
+
+    const had192 = has('icon-192.png');
+    if (had192) {
+      const f192 = await hcReadFile(owner, repo, branch, tok, 'icon-192.png');
+      if (f192) size192 = hcPngSize(f192.b64);
+    }
+    if (o.icons && b64_512 && size512 && (!had192 || !size192 || size192.w < 192 || size192.w !== size192.h)) {
+      try {
+        const img192 = await loadImageFromSrc('data:image/png;base64,' + b64_512);
+        filePush('icon-192.png', renderIconPng(img192, 192));
+        size192 = { w: 192, h: 192 };
+        if (had192) rep.fixed.push('icon-192.png régénéré en 192x192');
+        else rep.added.push('icon-192.png');
+      } catch (e) {
+        rep.warn.push('icon-192.png non généré');
+      }
+    }
+    const allNames = names.concat(pushedNames);
+
+    // ---- manifest.json (correction)
+    let themeForHtml = baseTheme;
+    if (o.manifest) {
+      const mRes = hcFixManifest(mText, {
+        name: appName, shortName: shortName, bg: baseBg, theme: baseTheme,
+        files: allNames,
+        has192: allNames.indexOf('icon-192.png') !== -1,
+        has512: allNames.indexOf('icon.png') !== -1,
+        size192: size192, size512: size512, warns: rep.warn
+      });
+      if (mRes.changes.length > 0) {
+        filePush('manifest.json', utf8ToB64(mRes.text));
+        if (mText && mText.trim()) rep.fixed.push('manifest.json : ' + mRes.changes.join(', '));
+        else rep.added.push('manifest.json');
+      }
+      themeForHtml = mRes.manifest.theme_color;
+    }
+
+    // ---- sw.js
+    if (o.sw) {
+      const sFile = has('sw.js') ? await hcReadFile(owner, repo, branch, tok, 'sw.js') : null;
+      const sRes = hcPatchSw(sFile ? b64ToUtf8(sFile.b64) : null, repo);
+      if (sRes.state === 'created') {
+        filePush('sw.js', utf8ToB64(sRes.text));
+        rep.added.push('sw.js');
+      } else if (sRes.state === 'patched') {
+        filePush('sw.js', utf8ToB64(sRes.text));
+        rep.fixed.push('sw.js : gestionnaire fetch ajouté (requis pour l\'installation)');
+      }
+    }
+
+    // ---- index.html (selon les éléments choisis)
+    if (needHtml) {
+      const splashNames = names.filter(function(n) { return /^splash-\d+x\d+\.png$/.test(n); });
+      const newHtml = hcPatchHtml(originalHtml, {
+        rep: rep,
+        theme: themeForHtml,
+        splashNames: splashNames,
+        opts: o
+      });
+      if (!htmlFile || newHtml !== originalHtml) filePush('index.html', utf8ToB64(newHtml));
+    }
+
+    rep.added.forEach(function(x) { addLog(repo, '+ ' + x, 'success'); });
+    rep.fixed.forEach(function(x) { addLog(repo, '~ ' + x, 'success'); });
+    rep.notes.forEach(function(x) { addLog(repo, 'ℹ ' + x, 'step'); });
+    rep.warn.forEach(function(x) { addLog(repo, x, 'warning'); });
+
+    if (toPush.length === 0) {
+      addLog(repo, '✅ Rien à modifier pour les éléments choisis', 'success');
+      showNotification('Déjà conforme pour les éléments choisis', 'success');
+      return;
+    }
+
+    const paths = toPush.map(function(f) { return f.path; });
+    const newSha = await pushFilesInOneCommit(owner, repo, branch, tok, toPush, 'Hubcode: injection PWA (' + paths.join(', ') + ')', repo);
+    addLog(repo, '✅ PWA injectée (1 commit) : ' + paths.join(', '), 'success');
+    showNotification('Injection PWA terminée', 'success');
+    try { watchPagesDeploy(owner, repo, new Response(JSON.stringify({ commit: { sha: newSha } }))); } catch (e) {}
+
+    try {
+      delete fileCache[repo]; delete allFilesCache[repo]; delete linesCache[owner + '/' + repo];
+      const freshFiles = await loadFilesForRepo(owner, repo, branch, tok);
+      const filesRow = byId('files-' + repo);
+      if (filesRow && freshFiles && freshFiles.length > 0) {
+        filesRow.innerHTML = '';
+        freshFiles.forEach(function(fn) { filesRow.appendChild(createFileButton(owner, repo, fn, branch)); });
+      }
+      const raw = allFilesCache[repo] || [];
+      const complete = ['index.html', 'manifest.json', 'sw.js', 'icon.png'].every(function(f) { return raw.indexOf(f) !== -1; });
+      const repoEl = byId('repo-' + repo);
+      if (repoEl) repoEl.classList.toggle('repo-incomplete', !complete);
+      if (freshFiles && freshFiles.indexOf('index.html') !== -1) {
+        loadIndexLineCount(owner, repo, branch, tok).then(function(c) { updateLinesBadge(repo, c); });
+      }
+    } catch (e) {}
+  } catch (err) {
+    addLog(repo, 'ERREUR : ' + err.message, 'error');
+    showNotification('Échec injection : ' + err.message, 'danger');
+  } finally {
+    setActivityState(false);
+    setRepoBusy(repo, false);
+  }
       };
 
       const deleteBrand = async () => {
@@ -1844,6 +2216,18 @@ const renderSettingsModal = () => {
   if (!modals.settings) return null;
   const hapticsSupported = typeof navigator !== 'undefined' && 'vibrate' in navigator;
   const generalRows = [
+    {
+      key: 'lightMode',
+      label: 'Mode clair',
+      hint: 'Interface claire, plus lisible en plein soleil',
+      value: lightMode,
+      disabled: false,
+      onToggle: () => {
+        const next = !lightMode;
+        setLightMode(next);
+        localStorage.setItem('light_mode', String(next));
+      }
+    },
     {
       key: 'haptics',
       label: 'Retour haptique',
@@ -2733,133 +3117,5 @@ const renderSettingsModal = () => {
     }
   </script>
   <script></script>
-<!-- HUBCODE-INSTALL:START -->
-<style>
-#hc-install{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:2147483000;display:none;align-items:center;gap:8px;font:600 14px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;}
-#hc-install.hc-show{display:flex;animation:hc-in .35s cubic-bezier(.2,.8,.2,1);}
-#hc-install button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.hc-install-main{display:flex;align-items:center;gap:8px;height:46px;padding:0 18px 0 14px;border-radius:23px;border:1px solid rgba(255,255,255,.2);color:#fff;background:linear-gradient(135deg,#15803d,#0f766e);box-shadow:0 8px 24px rgba(0,0,0,.35);transition:transform .15s ease,filter .15s ease;}
-.hc-install-main:active{transform:scale(.96);filter:brightness(1.1);}
-.hc-install-main:focus-visible,.hc-install-x:focus-visible,.hc-help-ok:focus-visible{outline:2px solid #fff;outline-offset:2px;}
-.hc-install-main svg{width:20px;height:20px;flex:0 0 20px;}
-.hc-install-x{width:30px;height:30px;border-radius:15px;border:1px solid rgba(255,255,255,.2);background:rgba(15,23,42,.8);color:#e2e8f0;font-size:13px;line-height:1;}
-#hc-install-help{position:fixed;inset:0;z-index:2147483001;display:none;align-items:flex-end;justify-content:center;padding:16px;background:rgba(2,6,23,.6);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);}
-#hc-install-help.hc-open{display:flex;}
-.hc-help-card{width:100%;max-width:420px;margin-bottom:env(safe-area-inset-bottom,0px);padding:20px;border-radius:20px;background:#0f172a;color:#e2e8f0;border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 60px rgba(0,0,0,.6);font:500 14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
-.hc-help-title{font-weight:800;font-size:16px;margin-bottom:10px;color:#86efac;}
-.hc-help-steps{margin:0 0 16px;padding-left:20px;display:flex;flex-direction:column;gap:6px;}
-.hc-help-ok{width:100%;height:44px;border-radius:12px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.15);color:#86efac;font:700 14px system-ui,sans-serif;}
-@keyframes hc-in{from{opacity:0;transform:translateY(12px) scale(.96);}to{opacity:1;transform:none;}}
-@media (prefers-reduced-motion:reduce){#hc-install.hc-show{animation:none;}}
-@media print{#hc-install,#hc-install-help{display:none !important;}}
-</style>
-<div id="hc-install" role="region" aria-label="PWA">
-  <button type="button" class="hc-install-main" id="hc-install-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg><span id="hc-install-label"></span></button>
-  <button type="button" class="hc-install-x" id="hc-install-x">✕</button>
-</div>
-<div id="hc-install-help" role="dialog" aria-modal="true" aria-labelledby="hc-help-title">
-  <div class="hc-help-card">
-    <div class="hc-help-title" id="hc-help-title"></div>
-    <ol class="hc-help-steps" id="hc-help-steps"></ol>
-    <button type="button" class="hc-help-ok" id="hc-help-ok"></button>
-  </div>
-</div>
-<script>
-(function () {
-  'use strict';
-  var root = document.getElementById('hc-install');
-  var btn = document.getElementById('hc-install-btn');
-  var xBtn = document.getElementById('hc-install-x');
-  var label = document.getElementById('hc-install-label');
-  var help = document.getElementById('hc-install-help');
-  var hTitle = document.getElementById('hc-help-title');
-  var hSteps = document.getElementById('hc-help-steps');
-  var hOk = document.getElementById('hc-help-ok');
-  if (!root || !btn || !help) return;
-
-  var KEY = 'hc_install_hidden_until';
-  var ua = navigator.userAgent || '';
-  var lang = String(document.documentElement.lang || navigator.language || 'fr').toLowerCase();
-  var fr = lang.indexOf('fr') === 0;
-  var T = fr ? {
-    install: "Installer l'app", hide: "Masquer", title: "Installer l'application", ok: "OK",
-    ios: ["Touche le bouton Partager de Safari (le carré avec la flèche vers le haut).", "Fais défiler et choisis « Sur l'écran d'accueil ».", "Valide avec « Ajouter »."],
-    other: ["Ouvre le menu du navigateur (⋮).", "Choisis « Installer l'application » ou « Ajouter à l'écran d'accueil ».", "Confirme l'installation."]
-  } : {
-    install: "Install app", hide: "Dismiss", title: "Install the app", ok: "OK",
-    ios: ["Tap the Share button in Safari (the square with an up arrow).", "Scroll down and choose “Add to Home Screen”.", "Confirm with “Add”."],
-    other: ["Open the browser menu (⋮).", "Choose “Install app” or “Add to Home screen”.", "Confirm the installation."]
-  };
-  var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var isAndroid = /android/i.test(ua);
-  var deferred = null;
-
-  function isStandalone() {
-    try {
-      return window.matchMedia('(display-mode: standalone)').matches ||
-             window.matchMedia('(display-mode: fullscreen)').matches ||
-             window.matchMedia('(display-mode: minimal-ui)').matches ||
-             navigator.standalone === true;
-    } catch (e) { return navigator.standalone === true; }
-  }
-  function isHidden() {
-    try { return Number(localStorage.getItem(KEY) || 0) > Date.now(); } catch (e) { return false; }
-  }
-  function show() { if (isStandalone() || isHidden()) return; root.classList.add('hc-show'); }
-  function hide() { root.classList.remove('hc-show'); }
-  function openHelp(steps) {
-    hTitle.textContent = T.title;
-    hSteps.innerHTML = '';
-    for (var i = 0; i < steps.length; i++) {
-      var li = document.createElement('li');
-      li.textContent = steps[i];
-      hSteps.appendChild(li);
-    }
-    hOk.textContent = T.ok;
-    help.classList.add('hc-open');
-    try { hOk.focus(); } catch (e) {}
-  }
-  function closeHelp() { help.classList.remove('hc-open'); }
-
-  label.textContent = T.install;
-  xBtn.setAttribute('aria-label', T.hide);
-  xBtn.setAttribute('title', T.hide);
-
-  btn.addEventListener('click', function () {
-    if (deferred) {
-      var p = deferred;
-      deferred = null;
-      p.prompt();
-      if (p.userChoice && p.userChoice.then) {
-        p.userChoice.then(function (c) { if (c && c.outcome === 'accepted') hide(); }, function () {});
-      }
-      return;
-    }
-    openHelp(isIOS ? T.ios : T.other);
-  });
-  xBtn.addEventListener('click', function () {
-    try { localStorage.setItem(KEY, String(Date.now() + 7 * 24 * 3600 * 1000)); } catch (e) {}
-    hide();
-  });
-  hOk.addEventListener('click', closeHelp);
-  help.addEventListener('click', function (e) { if (e.target === help) closeHelp(); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeHelp(); });
-
-  window.addEventListener('beforeinstallprompt', function (e) {
-    e.preventDefault();
-    deferred = e;
-    show();
-  });
-  window.addEventListener('appinstalled', function () {
-    deferred = null;
-    hide();
-  });
-
-  if (isStandalone()) return;
-  if (isIOS) { show(); }
-  else { setTimeout(function () { if (!deferred) show(); }, isAndroid ? 2500 : 3000); }
-})();
-</script>
-<!-- HUBCODE-INSTALL:END -->
 </body>
 </html>
