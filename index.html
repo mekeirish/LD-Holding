@@ -815,13 +815,13 @@ const getStoredPushSubscription = () => {
 const enablePushTracking = async () => {
   if (!isPushSupported()) {
     showToast("Notifications indisponibles. Sur iPhone, ajoutez d'abord l'app à l'écran d'accueil.", 'info');
-    return;
+    return null;
   }
   try {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
       showToast('Notifications refusées. Vous pouvez les autoriser dans les réglages du navigateur.', 'error');
-      return;
+      return null;
     }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
@@ -831,13 +831,16 @@ const enablePushTracking = async () => {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
       });
     }
-    localStorage.setItem('push_subscription', JSON.stringify(sub.toJSON()));
+    const subJson = sub.toJSON();
+    localStorage.setItem('push_subscription', JSON.stringify(subJson));
     localStorage.setItem('push_tracking', 'true');
     setPushTracking(true);
     showToast('Suivi de commande activé.', 'success');
+    return { endpoint: subJson.endpoint, keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth } };
   } catch (err) {
     console.error('Erreur abonnement push:', err);
     showToast("Impossible d'activer les notifications.", 'error');
+    return null;
   }
 };
 const disablePushTracking = async () => {
@@ -868,6 +871,29 @@ const notifyOrderStatus = (orderId, status) => {
     .then(response => response.json())
     .then(result => console.log('Push suivi commande:', status, result))
     .catch(err => console.warn('Push suivi commande indisponible:', err));
+};
+const [pushPrompt, setPushPrompt] = useState(null);
+const shouldOfferPushPrompt = () => {
+  if (!isPushSupported() || pushTracking) return false;
+  if (Notification.permission === 'denied') return false;
+  const dismissedAt = Number(localStorage.getItem('push_prompt_dismissed_at') || 0);
+  return Date.now() - dismissedAt > 30 * 24 * 60 * 60 * 1000;
+};
+const acceptPushPrompt = async () => {
+  const orderId = pushPrompt && pushPrompt.orderId;
+  setPushPrompt(null);
+  const sub = await enablePushTracking();
+  if (sub && orderId) {
+    try {
+      await firebase.database().ref('orders').child(orderId).update({ push: sub });
+    } catch (err) {
+      console.error('Ajout abonnement à la commande:', err);
+    }
+  }
+};
+const dismissPushPrompt = () => {
+  localStorage.setItem('push_prompt_dismissed_at', String(Date.now()));
+  setPushPrompt(null);
 };
       const [editingProduct, setEditingProduct] = useState(null);
       const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
@@ -1653,7 +1679,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
           push: getStoredPushSubscription()
         };
         try {
-          await firebase.database().ref('orders').push(newOrder);
+          const orderRef = await firebase.database().ref('orders').push(newOrder);
           setCart([]);
           if (rememberClient) {
             localStorage.setItem('client_info', JSON.stringify({
@@ -1667,6 +1693,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
           }
           setModals(prev => ({ ...prev, cart: false }));
           sendNtfy(totalItems, total, clientInfo.nom, clientInfo.commentaire);
+          if (shouldOfferPushPrompt()) setPushPrompt({ orderId: orderRef.key });
         } catch (err) { console.error('Erreur validateOrder:', err); showToast('Erreur lors de la validation de la commande.', 'error'); }
       };
 
@@ -2922,6 +2949,24 @@ const renderSettingsModal = () => {
             }, "Migrer les dates")
           )
         );
+      const renderPushPromptModal = () =>
+        React.createElement(Modal, { isOpen: !!pushPrompt, title: "Commande envoyée", onClose: dismissPushPrompt },
+          React.createElement("div", { className: "flex flex-col items-center text-center pt-2" },
+            React.createElement("div", { className: "w-16 h-16 rounded-full bg-[#E8F04F]/10 border border-[#E8F04F]/25 flex items-center justify-center text-[#E8F04F] mb-4" },
+              React.createElement("svg", { width: 28, height: 28, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" },
+                React.createElement("path", { d: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" }),
+                React.createElement("path", { d: "M13.7 21a2 2 0 0 1-3.4 0" })
+              )
+            ),
+            React.createElement("h3", { className: "text-[#F0F4F8] text-lg font-semibold tracking-[-0.01em]" }, "Suivre votre commande ?"),
+            React.createElement("p", { className: "text-sm text-[#9CA3AF] mt-2 leading-relaxed" }, "Recevez une notification quand elle est en préparation, puis quand elle est livrée."),
+            React.createElement(Button, { onClick: acceptPushPrompt, className: "mt-6" }, "Oui, me prévenir"),
+            React.createElement("button", {
+              onClick: dismissPushPrompt,
+              className: "w-full mt-2 py-2.5 text-sm font-medium text-[#9CA3AF] hover:text-[#F0F4F8] transition"
+            }, "Non merci")
+          )
+        );
 
       const renderModals = () => {
         return React.createElement(React.Fragment, null,
@@ -2935,7 +2980,8 @@ const renderSettingsModal = () => {
           renderCartModal(),
           renderOrdersModal(),
           renderNotificationsModal(),
-          renderAdvancedOptionsModal()
+          renderAdvancedOptionsModal(),
+          renderPushPromptModal()
         );
       };
       const renderHeader = () =>
