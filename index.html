@@ -1183,7 +1183,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
             setClientInfo({ nom: '', adresse: '', telephone: '', commentaire: '' });
           }
           setModals(prev => ({ ...prev, cart: false }));
-          sendNtfy(totalItems, total);
+          sendNtfy(totalItems, total, clientInfo.nom, clientInfo.commentaire);
         } catch (err) { console.error('Erreur validateOrder:', err); showToast('Erreur lors de la validation de la commande.', 'error'); }
       };
 
@@ -1343,14 +1343,25 @@ const updateCartItemQuantity = (id, delta) => {
       const getTotalCartItems = () => cart.reduce((sum, item) => sum + item.quantity, 0);
       const getTotalPrice = () => cart.reduce((sum, item) => sum + item.quantity * item.price * item.packQty, 0);
 
-      const sendNtfy = (totalItems, total) => {
+      const sendNtfy = (totalItems, total, clientName, comment) => {
         const topic = ntfyTopic || 'ldholdingnotif';
-        const url = new URL(`https://ntfy.sh/${topic}`);
-        url.searchParams.append('ta', 'package');
-        url.searchParams.append('po', '3');
-        url.searchParams.append('x', window.location.href);
-        const message = `📦 Nouvelle Commande !\nNouvelle commande de ${totalItems} articles, total : ${total} DZD.`;
-        fetch(url, { method: 'POST', body: message })
+        const name = String(clientName || '').trim() || 'Client';
+        const note = String(comment || '').trim();
+        const lines = [
+          `👤  ${name}`,
+          `🛒  ${totalItems} article${totalItems > 1 ? 's' : ''}`,
+          `💰  ${Number(total).toLocaleString('fr-FR')} DZD`
+        ];
+        if (note) lines.push(`📝  ${note}`);
+        const payload = {
+          topic,
+          title: 'Nouvelle commande',
+          message: lines.join('\n'),
+          tags: ['package'],
+          priority: 4,
+          click: window.location.href
+        };
+        fetch('https://ntfy.sh/', { method: 'POST', body: JSON.stringify(payload) })
           .then(response => {
             const successMsg = showPrices ? `✅ Commande validée ! ${totalItems} article(s) - ${total} DZD.` : `✅ Commande validée ! ${totalItems} article(s).`;
             if (response.ok) showToast(successMsg, "success");
