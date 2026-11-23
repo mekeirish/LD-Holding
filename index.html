@@ -2857,7 +2857,7 @@ const renderSettingsModal = () => {
 
   if (isStandalone()) return;
   if (isIOS) { show(); }
-  else if (isAndroid) { setTimeout(function () { if (!deferred) show(); }, 3000); }
+  else { setTimeout(function () { if (!deferred) show(); }, isAndroid ? 2500 : 3000); }
 })();
 </script>
 <!-- HUBCODE-INSTALL:END -->
