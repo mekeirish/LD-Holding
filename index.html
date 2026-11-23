@@ -146,6 +146,21 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="msapplication-TileColor" content="#030712">
   <meta name="msapplication-config" content="/browserconfig.xml">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- HUBCODE-SPLASH:START -->
+<link rel="apple-touch-startup-image" href="./splash-640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<link rel="apple-touch-startup-image" href="./splash-1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+<!-- HUBCODE-SPLASH:END -->
 </head>
 <body>
   <div id="root"></div>
@@ -2718,5 +2733,133 @@ const renderSettingsModal = () => {
     }
   </script>
   <script></script>
+<!-- HUBCODE-INSTALL:START -->
+<style>
+#hc-install{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:2147483000;display:none;align-items:center;gap:8px;font:600 14px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;}
+#hc-install.hc-show{display:flex;animation:hc-in .35s cubic-bezier(.2,.8,.2,1);}
+#hc-install button{font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.hc-install-main{display:flex;align-items:center;gap:8px;height:46px;padding:0 18px 0 14px;border-radius:23px;border:1px solid rgba(255,255,255,.2);color:#fff;background:linear-gradient(135deg,#15803d,#0f766e);box-shadow:0 8px 24px rgba(0,0,0,.35);transition:transform .15s ease,filter .15s ease;}
+.hc-install-main:active{transform:scale(.96);filter:brightness(1.1);}
+.hc-install-main:focus-visible,.hc-install-x:focus-visible,.hc-help-ok:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+.hc-install-main svg{width:20px;height:20px;flex:0 0 20px;}
+.hc-install-x{width:30px;height:30px;border-radius:15px;border:1px solid rgba(255,255,255,.2);background:rgba(15,23,42,.8);color:#e2e8f0;font-size:13px;line-height:1;}
+#hc-install-help{position:fixed;inset:0;z-index:2147483001;display:none;align-items:flex-end;justify-content:center;padding:16px;background:rgba(2,6,23,.6);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);}
+#hc-install-help.hc-open{display:flex;}
+.hc-help-card{width:100%;max-width:420px;margin-bottom:env(safe-area-inset-bottom,0px);padding:20px;border-radius:20px;background:#0f172a;color:#e2e8f0;border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 60px rgba(0,0,0,.6);font:500 14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+.hc-help-title{font-weight:800;font-size:16px;margin-bottom:10px;color:#86efac;}
+.hc-help-steps{margin:0 0 16px;padding-left:20px;display:flex;flex-direction:column;gap:6px;}
+.hc-help-ok{width:100%;height:44px;border-radius:12px;border:1px solid rgba(34,197,94,.4);background:rgba(34,197,94,.15);color:#86efac;font:700 14px system-ui,sans-serif;}
+@keyframes hc-in{from{opacity:0;transform:translateY(12px) scale(.96);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){#hc-install.hc-show{animation:none;}}
+@media print{#hc-install,#hc-install-help{display:none !important;}}
+</style>
+<div id="hc-install" role="region" aria-label="PWA">
+  <button type="button" class="hc-install-main" id="hc-install-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg><span id="hc-install-label"></span></button>
+  <button type="button" class="hc-install-x" id="hc-install-x">✕</button>
+</div>
+<div id="hc-install-help" role="dialog" aria-modal="true" aria-labelledby="hc-help-title">
+  <div class="hc-help-card">
+    <div class="hc-help-title" id="hc-help-title"></div>
+    <ol class="hc-help-steps" id="hc-help-steps"></ol>
+    <button type="button" class="hc-help-ok" id="hc-help-ok"></button>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var root = document.getElementById('hc-install');
+  var btn = document.getElementById('hc-install-btn');
+  var xBtn = document.getElementById('hc-install-x');
+  var label = document.getElementById('hc-install-label');
+  var help = document.getElementById('hc-install-help');
+  var hTitle = document.getElementById('hc-help-title');
+  var hSteps = document.getElementById('hc-help-steps');
+  var hOk = document.getElementById('hc-help-ok');
+  if (!root || !btn || !help) return;
+
+  var KEY = 'hc_install_hidden_until';
+  var ua = navigator.userAgent || '';
+  var lang = String(document.documentElement.lang || navigator.language || 'fr').toLowerCase();
+  var fr = lang.indexOf('fr') === 0;
+  var T = fr ? {
+    install: "Installer l'app", hide: "Masquer", title: "Installer l'application", ok: "OK",
+    ios: ["Touche le bouton Partager de Safari (le carré avec la flèche vers le haut).", "Fais défiler et choisis « Sur l'écran d'accueil ».", "Valide avec « Ajouter »."],
+    other: ["Ouvre le menu du navigateur (⋮).", "Choisis « Installer l'application » ou « Ajouter à l'écran d'accueil ».", "Confirme l'installation."]
+  } : {
+    install: "Install app", hide: "Dismiss", title: "Install the app", ok: "OK",
+    ios: ["Tap the Share button in Safari (the square with an up arrow).", "Scroll down and choose “Add to Home Screen”.", "Confirm with “Add”."],
+    other: ["Open the browser menu (⋮).", "Choose “Install app” or “Add to Home screen”.", "Confirm the installation."]
+  };
+  var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var isAndroid = /android/i.test(ua);
+  var deferred = null;
+
+  function isStandalone() {
+    try {
+      return window.matchMedia('(display-mode: standalone)').matches ||
+             window.matchMedia('(display-mode: fullscreen)').matches ||
+             window.matchMedia('(display-mode: minimal-ui)').matches ||
+             navigator.standalone === true;
+    } catch (e) { return navigator.standalone === true; }
+  }
+  function isHidden() {
+    try { return Number(localStorage.getItem(KEY) || 0) > Date.now(); } catch (e) { return false; }
+  }
+  function show() { if (isStandalone() || isHidden()) return; root.classList.add('hc-show'); }
+  function hide() { root.classList.remove('hc-show'); }
+  function openHelp(steps) {
+    hTitle.textContent = T.title;
+    hSteps.innerHTML = '';
+    for (var i = 0; i < steps.length; i++) {
+      var li = document.createElement('li');
+      li.textContent = steps[i];
+      hSteps.appendChild(li);
+    }
+    hOk.textContent = T.ok;
+    help.classList.add('hc-open');
+    try { hOk.focus(); } catch (e) {}
+  }
+  function closeHelp() { help.classList.remove('hc-open'); }
+
+  label.textContent = T.install;
+  xBtn.setAttribute('aria-label', T.hide);
+  xBtn.setAttribute('title', T.hide);
+
+  btn.addEventListener('click', function () {
+    if (deferred) {
+      var p = deferred;
+      deferred = null;
+      p.prompt();
+      if (p.userChoice && p.userChoice.then) {
+        p.userChoice.then(function (c) { if (c && c.outcome === 'accepted') hide(); }, function () {});
+      }
+      return;
+    }
+    openHelp(isIOS ? T.ios : T.other);
+  });
+  xBtn.addEventListener('click', function () {
+    try { localStorage.setItem(KEY, String(Date.now() + 7 * 24 * 3600 * 1000)); } catch (e) {}
+    hide();
+  });
+  hOk.addEventListener('click', closeHelp);
+  help.addEventListener('click', function (e) { if (e.target === help) closeHelp(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeHelp(); });
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+    show();
+  });
+  window.addEventListener('appinstalled', function () {
+    deferred = null;
+    hide();
+  });
+
+  if (isStandalone()) return;
+  if (isIOS) { show(); }
+  else if (isAndroid) { setTimeout(function () { if (!deferred) show(); }, 3000); }
+})();
+</script>
+<!-- HUBCODE-INSTALL:END -->
 </body>
 </html>
