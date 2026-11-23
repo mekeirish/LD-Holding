@@ -1,4 +1,4 @@
-const CACHE_NAME = 'LD-Holding-v2';
+const CACHE_NAME = 'LD-Holding-v3';
 const PRECACHE = ['./index.html', './manifest.json', './icon.png'];
 
 self.addEventListener('install', event => {
@@ -59,6 +59,44 @@ self.addEventListener('fetch', event => {
         })
         .catch(() => cached);
       return cached || network;
+    })
+  );
+});
+
+self.addEventListener('push', event => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'LD Holding', body: event.data ? event.data.text() : '' };
+  }
+
+  const title = data.title || 'LD Holding';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: './icon.png',
+      badge: './icon.png',
+      tag: data.tag || 'ld-holding',
+      renotify: true,
+      data: { url: data.url || './index.html' }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = new URL(
+    (event.notification.data && event.notification.data.url) || './index.html',
+    self.location.href
+  ).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
+      for (const win of windows) {
+        if (win.url.startsWith(self.registration.scope) && 'focus' in win) return win.focus();
+      }
+      return self.clients.openWindow(target);
     })
   );
 });
