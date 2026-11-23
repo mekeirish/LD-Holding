@@ -578,6 +578,16 @@ const playOrderAlertSound = () => {
     console.warn('Alerte sonore indisponible:', e);
   }
 };
+const PUSH_WORKER_URL = 'https://ld-push.mmm1747lb.workers.dev';
+const VAPID_PUBLIC_KEY = 'BJCe2n9OUYkF6aExg97QHBvpA3ZqyxEA35Z0SkIc-d8kgnzDCtGPFl528rhHPOqthVT4_jLXqXDl47GK-3iPlLY';
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+};
+const isPushSupported = () =>
+  'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
     const App = () => {
       const [isAdmin, setIsAdmin] = useState(false);
@@ -774,6 +784,91 @@ useEffect(() => {
     meta.setAttribute('content', lightMode ? '#F3F5F8' : '#0E1B2D');
   });
 }, [lightMode]);
+const [pushTracking, setPushTracking] = useState(() =>
+  localStorage.getItem('push_tracking') === 'true' && isPushSupported() && Notification.permission === 'granted'
+);
+useEffect(() => {
+  if (!pushTracking || !isPushSupported()) return;
+  navigator.serviceWorker.ready
+    .then(reg => reg.pushManager.getSubscription())
+    .then(sub => {
+      if (sub) {
+        localStorage.setItem('push_subscription', JSON.stringify(sub.toJSON()));
+      } else {
+        localStorage.removeItem('push_subscription');
+        localStorage.setItem('push_tracking', 'false');
+        setPushTracking(false);
+      }
+    })
+    .catch(err => console.warn('Vérification abonnement push:', err));
+}, []);
+const getStoredPushSubscription = () => {
+  if (!pushTracking) return null;
+  try {
+    const s = JSON.parse(localStorage.getItem('push_subscription') || 'null');
+    if (!s || !s.endpoint || !s.keys) return null;
+    return { endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } };
+  } catch (e) {
+    return null;
+  }
+};
+const enablePushTracking = async () => {
+  if (!isPushSupported()) {
+    showToast("Notifications indisponibles. Sur iPhone, ajoutez d'abord l'app à l'écran d'accueil.", 'info');
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('Notifications refusées. Vous pouvez les autoriser dans les réglages du navigateur.', 'error');
+      return;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    localStorage.setItem('push_subscription', JSON.stringify(sub.toJSON()));
+    localStorage.setItem('push_tracking', 'true');
+    setPushTracking(true);
+    showToast('Suivi de commande activé.', 'success');
+  } catch (err) {
+    console.error('Erreur abonnement push:', err);
+    showToast("Impossible d'activer les notifications.", 'error');
+  }
+};
+const disablePushTracking = async () => {
+  try {
+    if (isPushSupported()) {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+    }
+  } catch (err) {
+    console.warn('Désabonnement push:', err);
+  }
+  localStorage.removeItem('push_subscription');
+  localStorage.setItem('push_tracking', 'false');
+  setPushTracking(false);
+  showToast('Suivi de commande désactivé.', 'info');
+};
+const togglePushTracking = () => {
+  if (pushTracking) disablePushTracking();
+  else enablePushTracking();
+};
+const notifyOrderStatus = (orderId, status) => {
+  fetch(`${PUSH_WORKER_URL}/notify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, status })
+  })
+    .then(response => response.json())
+    .then(result => console.log('Push suivi commande:', status, result))
+    .catch(err => console.warn('Push suivi commande indisponible:', err));
+};
       const [editingProduct, setEditingProduct] = useState(null);
       const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
       const [showDataPanel, setShowDataPanel] = useState(false);
@@ -1554,7 +1649,8 @@ const addProductToCompilationGroup = (groupId, productId) => {
           items: cart.map(item => ({ ...item })),
           total,
           status: 'received',
-          client: { ...clientInfo }
+          client: { ...clientInfo },
+          push: getStoredPushSubscription()
         };
         try {
           await firebase.database().ref('orders').push(newOrder);
@@ -1578,6 +1674,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
         try {
           await firebase.database().ref('orders').child(orderId).update({ status: 'processing' });
           showToast("Commande traitée.", "success");
+          notifyOrderStatus(orderId, 'processing');
         } catch (err) { console.error('Erreur handleProcess:', err); showToast('Erreur lors du traitement de la commande.', 'error'); }
       };
 
@@ -1585,6 +1682,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
         try {
           await firebase.database().ref('orders').child(orderId).update({ status: 'delivered' });
           showToast("Commande livrée.", "success");
+          notifyOrderStatus(orderId, 'delivered');
         } catch (err) { console.error('Erreur handleDeliver:', err); showToast('Erreur lors de la livraison de la commande.', 'error'); }
       };
 
@@ -2545,8 +2643,9 @@ const renderSettingsModal = () => {
           )
         );
       };
-      const renderCartModal = () =>
-        React.createElement(Modal, {
+      const renderCartModal = () => {
+        const pushSupported = isPushSupported();
+        return React.createElement(Modal, {
           isOpen: modals.cart,
           title: cart.length > 0 ? `Mon panier · ${getTotalCartItems()} pack(s)` : "Mon panier",
           onClose: () => setModals(prev => ({ ...prev, cart: false }))
@@ -2656,6 +2755,34 @@ const renderSettingsModal = () => {
                   )
                 )
               ),
+              React.createElement("button", {
+                onClick: pushSupported ? togglePushTracking : () => showToast("Sur iPhone, ajoutez d'abord l'app à l'écran d'accueil pour recevoir le suivi.", 'info'),
+                role: "switch",
+                "aria-checked": pushTracking,
+                className: `glass w-full mt-4 rounded-2xl flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${pushSupported ? 'active:bg-white/[0.03]' : 'opacity-60'}`
+              },
+                React.createElement("span", { className: "flex-shrink-0 w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.06] flex items-center justify-center text-[#E8F04F]/90" },
+                  React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" },
+                    React.createElement("path", { d: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" }),
+                    React.createElement("path", { d: "M13.7 21a2 2 0 0 1-3.4 0" })
+                  )
+                ),
+                React.createElement("span", { className: "flex flex-col flex-1 min-w-0" },
+                  React.createElement("span", { className: "text-sm font-semibold text-[#F0F4F8]" }, "Me prévenir du suivi"),
+                  React.createElement("span", { className: "text-[11px] text-[#9CA3AF] mt-0.5" },
+                    !pushSupported
+                      ? "Sur iPhone : ajoutez d'abord l'app à l'écran d'accueil"
+                      : (pushTracking ? "Notifié à la préparation puis à la livraison" : "Recevoir une notification à chaque étape")
+                  )
+                ),
+                React.createElement("span", {
+                  className: `relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${pushTracking ? 'bg-[#E8F04F]/90' : 'bg-white/[0.12]'}`
+                },
+                  React.createElement("span", {
+                    className: `absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-[0_2px_6px_rgba(3,8,18,0.4)] transition-transform duration-200 ${pushTracking ? 'translate-x-5 bg-[#0E1B2D]' : 'translate-x-0 bg-[#F0F4F8]'}`
+                  })
+                )
+              ),
               React.createElement("div", { className: "sticky -bottom-5 -mx-5 -mb-5 mt-6 px-5 pt-4 pb-5 bg-gradient-to-t from-[#1A2A3F] via-[#1A2A3F]/95 to-[#1A2A3F]/0" },
                 React.createElement(Button, { onClick: validateOrder },
                   showPrices ? `Valider · ${getTotalPrice().toLocaleString()} DZD` : "Valider la commande"
@@ -2667,6 +2794,7 @@ const renderSettingsModal = () => {
               )
             )
         );
+      };
       const renderOrdersModal = () => {
         const sortedOrders = orders
           .filter(order => order.status === orderTab)
