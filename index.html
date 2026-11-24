@@ -747,6 +747,43 @@ const [modals, setModals] = useState({
   advancedOptions: false, stats: false, compilations: false, settings: false
 });
 const [clientView, setClientView] = useState(false);
+      const PRINTER_BLE_SERVICES = [
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        '0000ff00-0000-1000-8000-00805f9b34fb',
+        '0000ff10-0000-1000-8000-00805f9b34fb',
+        '0000ff12-0000-1000-8000-00805f9b34fb',
+        '0000ffb0-0000-1000-8000-00805f9b34fb',
+        '0000ffc0-0000-1000-8000-00805f9b34fb',
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        '0000ffe5-0000-1000-8000-00805f9b34fb',
+        '0000fff0-0000-1000-8000-00805f9b34fb',
+        '0000fee7-0000-1000-8000-00805f9b34fb',
+        '0000ae00-0000-1000-8000-00805f9b34fb',
+        '0000ae30-0000-1000-8000-00805f9b34fb',
+        '0000a002-0000-1000-8000-00805f9b34fb',
+        '0000a1a0-0000-1000-8000-00805f9b34fb',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '38eb4a80-c570-11e3-9507-0002a5d5c51b',
+        '00001101-0000-1000-8000-00805f9b34fb'
+      ];
+const [printerCfg, setPrinterCfg] = useState(() => {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('ldh_printer') || '{}') || {}; } catch (e) { saved = {}; }
+  return {
+    id: '',
+    name: '',
+    svc: '',
+    chr: '',
+    width: 58,
+    mode: (typeof navigator !== 'undefined' && navigator.bluetooth) ? 'ble' : 'rawbt',
+    cut: false,
+    extraSvc: '',
+    ...saved
+  };
+});
+const [printerBusy, setPrinterBusy] = useState(false);
+const printerRef = useRef({ device: null, char: null });
 const adminRestoredRef = useRef(false);
 useEffect(() => {
   const savedHash = localStorage.getItem('admin_hash');
@@ -1727,6 +1764,452 @@ const handleDeleteOrder = async (orderId) => {
     showToast('Erreur lors de la suppression de la commande.', 'error');
   }
 };
+const savePrinterCfg = (patch) => {
+  setPrinterCfg(prev => {
+    const next = { ...prev, ...patch };
+    try { localStorage.setItem('ldh_printer', JSON.stringify(next)); } catch (e) { /* stockage indisponible */ }
+    return next;
+  });
+};
+const buildTicketLines = (order) => {
+  const fmt = (n) => Number(n).toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, ' ');
+  const client = order.client || {};
+  const ref = String(order.id).slice(-6).toUpperCase();
+  const lines = [
+    { type: 'text', text: 'LD Holding', align: 'center', size: 'xl', bold: true },
+    { type: 'text', text: 'Bon de commande', align: 'center', size: 'm' },
+    { type: 'sep' },
+    { type: 'text', text: 'N° ' + ref, size: 'm' },
+    { type: 'text', text: formatOrderDate(order), size: 'm' }
+  ];
+  if (client.nom) lines.push({ type: 'text', text: 'Client : ' + client.nom, size: 'm', bold: true });
+  if (client.adresse) lines.push({ type: 'text', text: 'Adresse : ' + client.adresse, size: 'm' });
+  if (client.telephone) lines.push({ type: 'text', text: 'Tél : ' + client.telephone, size: 'm' });
+  if (client.commentaire) lines.push({ type: 'text', text: 'Note : ' + client.commentaire, size: 'm' });
+  lines.push({ type: 'sep' });
+  order.items.forEach(item => {
+    lines.push({ type: 'text', text: item.name, size: 'm', bold: true });
+    lines.push({
+      type: 'row',
+      left: '   x' + item.quantity,
+      right: showPrices ? fmt(item.quantity * item.price * item.packQty) + ' DZD' : '',
+      size: 'm'
+    });
+  });
+  lines.push({ type: 'sep' });
+  if (showPrices) lines.push({ type: 'row', left: 'TOTAL', right: fmt(order.total) + ' DZD', size: 'l', bold: true });
+  lines.push({ type: 'space', h: 14 });
+  lines.push({ type: 'text', text: 'Merci !', align: 'center', size: 'm' });
+  lines.push({ type: 'space', h: 10 });
+  return lines;
+};
+const buildTestTicketLines = () => {
+  return [
+    { type: 'text', text: 'LD Holding', align: 'center', size: 'xl', bold: true },
+    { type: 'text', text: 'Ticket de test', align: 'center', size: 'm' },
+    { type: 'sep' },
+    { type: 'text', text: 'Largeur : ' + printerCfg.width + ' mm', size: 'm' },
+    { type: 'text', text: 'Accents : é è à ç ù ô î É', size: 'm' },
+    { type: 'text', text: 'Arabe : مرحبا بكم', size: 'm' },
+    { type: 'row', left: 'Article test', right: '1 250 DZD', size: 'm' },
+    { type: 'row', left: 'TOTAL', right: '1 250 DZD', size: 'l', bold: true },
+    { type: 'sep' },
+    { type: 'text', text: 'Imprimante OK ✔', align: 'center', size: 'm' },
+    { type: 'space', h: 10 }
+  ];
+};
+const renderTicketCanvas = (lines, dots) => {
+  const scale = dots / 384;
+  const pad = Math.round(8 * scale);
+  const gap = Math.round(10 * scale);
+  const maxW = dots - pad * 2;
+  const sizes = { s: 20, m: 24, l: 32, xl: 42 };
+  const family = 'Arial, Helvetica, sans-serif';
+  const measure = document.createElement('canvas').getContext('2d');
+  const fontOf = (line) => (line.bold ? 'bold ' : '') + Math.round((sizes[line.size] || 24) * scale) + 'px ' + family;
+
+  const wrap = (text, font, width) => {
+    measure.font = font;
+    const out = [];
+    String(text).split('\n').forEach(paragraph => {
+      let current = '';
+      paragraph.split(' ').forEach(word => {
+        let w = word;
+        while (measure.measureText(w).width > width && w.length > 1) {
+          let cut = w.length - 1;
+          while (cut > 1 && measure.measureText(w.slice(0, cut)).width > width) cut--;
+          if (current) { out.push(current); current = ''; }
+          out.push(w.slice(0, cut));
+          w = w.slice(cut);
+        }
+        const test = current ? current + ' ' + w : w;
+        if (measure.measureText(test).width <= width) current = test;
+        else { out.push(current); current = w; }
+      });
+      out.push(current);
+    });
+    return out;
+  };
+
+  const ops = [];
+  let y = pad;
+  lines.forEach(line => {
+    if (line.type === 'space') {
+      y += Math.round(line.h * scale);
+      return;
+    }
+    if (line.type === 'sep') {
+      y += Math.round(6 * scale);
+      ops.push({ kind: 'sep', y: y });
+      y += Math.round(10 * scale);
+      return;
+    }
+    const font = fontOf(line);
+    const lh = Math.round((sizes[line.size] || 24) * scale * 1.3);
+    if (line.type === 'row') {
+      measure.font = font;
+      const rightW = line.right ? measure.measureText(line.right).width : 0;
+      const leftLines = wrap(line.left, font, Math.max(40, maxW - rightW - gap));
+      leftLines.forEach((txt, i) => {
+        ops.push({ kind: 'text', text: txt, x: pad, y: y, font: font, align: 'left' });
+        if (i === 0 && line.right) ops.push({ kind: 'text', text: line.right, x: dots - pad, y: y, font: font, align: 'right' });
+        y += lh;
+      });
+      return;
+    }
+    wrap(line.text, font, maxW).forEach(txt => {
+      const x = line.align === 'center' ? dots / 2 : (line.align === 'right' ? dots - pad : pad);
+      ops.push({ kind: 'text', text: txt, x: x, y: y, font: font, align: line.align || 'left' });
+      y += lh;
+    });
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = dots;
+  canvas.height = y + pad;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#000000';
+  ctx.textBaseline = 'top';
+  ops.forEach(op => {
+    if (op.kind === 'sep') {
+      ctx.fillRect(pad, op.y, dots - pad * 2, Math.max(2, Math.round(2 * scale)));
+      return;
+    }
+    ctx.font = op.font;
+    ctx.textAlign = op.align;
+    ctx.fillText(op.text, op.x, op.y);
+  });
+  return canvas;
+};
+const canvasToEscPos = (canvas, cut) => {
+  const width = canvas.width;
+  const height = canvas.height;
+  const bytesPerRow = Math.ceil(width / 8);
+  const pixels = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+  const BAND = 128;
+  const out = [0x1B, 0x40];
+  for (let y0 = 0; y0 < height; y0 += BAND) {
+    const bandH = Math.min(BAND, height - y0);
+    out.push(0x1D, 0x76, 0x30, 0x00, bytesPerRow & 255, bytesPerRow >> 8, bandH & 255, bandH >> 8);
+    for (let y = y0; y < y0 + bandH; y++) {
+      for (let bx = 0; bx < bytesPerRow; bx++) {
+        let b = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = bx * 8 + bit;
+          if (x >= width) continue;
+          const i = (y * width + x) * 4;
+          const lum = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+          if (lum < 140) b |= (0x80 >> bit);
+        }
+        out.push(b);
+      }
+    }
+  }
+  out.push(0x1B, 0x64, 4);
+  if (cut) out.push(0x1D, 0x56, 0x42, 0x00);
+  return new Uint8Array(out);
+};
+const connectPrinter = async (forcePick) => {
+  const ref = printerRef.current;
+  if (!forcePick && ref.char && ref.device && ref.device.gatt && ref.device.gatt.connected) return ref.char;
+  if (!navigator.bluetooth) throw new Error("Bluetooth web indisponible sur cet appareil. Utilise RawBT ou l'impression système.");
+
+  const services = PRINTER_BLE_SERVICES.slice();
+  let extra = String(printerCfg.extraSvc || '').trim().toLowerCase();
+  if (/^[0-9a-f]{4}$/.test(extra)) extra = '0000' + extra + '-0000-1000-8000-00805f9b34fb';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(extra) && services.indexOf(extra) === -1) services.push(extra);
+
+  let device = null;
+  if (!forcePick && printerCfg.id && navigator.bluetooth.getDevices) {
+    try {
+      const known = await navigator.bluetooth.getDevices();
+      device = known.find(d => d.id === printerCfg.id) || null;
+    } catch (e) { device = null; }
+  }
+  if (!forcePick && !device && ref.device) device = ref.device;
+  if (!device) {
+    device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: services });
+  }
+
+  if (!device.__ldhListener) {
+    device.__ldhListener = true;
+    device.addEventListener('gattserverdisconnected', () => { printerRef.current.char = null; });
+  }
+
+  const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
+  let serviceList = [];
+  try {
+    serviceList = await server.getPrimaryServices();
+  } catch (e) {
+    throw new Error("Service d'impression introuvable. Ajoute l'UUID du service dans les options avancées ou utilise RawBT.");
+  }
+  const candidates = [];
+  for (const service of serviceList) {
+    let chars = [];
+    try { chars = await service.getCharacteristics(); } catch (e) { chars = []; }
+    chars.forEach(c => {
+      if (c.properties.write || c.properties.writeWithoutResponse) candidates.push(c);
+    });
+  }
+  const char = candidates.find(c => c.uuid === printerCfg.chr)
+    || candidates.find(c => c.properties.writeWithoutResponse)
+    || candidates[0];
+  if (!char) {
+    throw new Error("Aucun canal d'écriture trouvé sur cette imprimante. Essaie RawBT (Bluetooth classique).");
+  }
+
+  printerRef.current = { device: device, char: char };
+  savePrinterCfg({ id: device.id, name: device.name || 'Imprimante Bluetooth', svc: char.service.uuid, chr: char.uuid });
+  return char;
+};
+const sendToPrinter = async (char, bytes) => {
+  const noResponse = !!char.properties.writeWithoutResponse;
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  let chunk = 100;
+  let fails = 0;
+  let i = 0;
+  while (i < bytes.length) {
+    const part = bytes.slice(i, i + chunk);
+    try {
+      if (noResponse) await char.writeValueWithoutResponse(part);
+      else await char.writeValueWithResponse(part);
+      i += part.length;
+      await wait(noResponse ? 20 : 5);
+    } catch (err) {
+      fails++;
+      if (fails > 6) throw err;
+      if (chunk > 20) chunk = 20;
+      await wait(120);
+    }
+  }
+};
+const sendToRawBt = (bytes) => {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const b64 = btoa(binary);
+  window.location.href = 'intent:base64,' + b64 + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
+};
+const runPrint = async (lines) => {
+  if (printerBusy) return;
+  const dots = printerCfg.width === 80 ? 576 : 384;
+  const bytes = canvasToEscPos(renderTicketCanvas(lines, dots), printerCfg.cut);
+  if (printerCfg.mode === 'rawbt') {
+    showToast('Envoi à RawBT…', 'info');
+    sendToRawBt(bytes);
+    return;
+  }
+  setPrinterBusy(true);
+  try {
+    showToast("Connexion à l'imprimante…", 'info');
+    const char = await connectPrinter(false);
+    showToast('Impression en cours…', 'info');
+    await sendToPrinter(char, bytes);
+    showToast('Ticket envoyé ✅', 'success');
+  } catch (err) {
+    console.error('Erreur runPrint:', err);
+    printerRef.current.char = null;
+    const msg = String((err && err.message) || err);
+    if (/cancel/i.test(msg)) showToast("Aucune imprimante choisie.", 'info');
+    else showToast("Échec d'impression : " + msg, 'error');
+  } finally {
+    setPrinterBusy(false);
+  }
+};
+const printTicket = (order) => {
+  if (printerCfg.mode === 'system') { printOrder(order); return; }
+  runPrint(buildTicketLines(order));
+};
+const printTestTicket = () => {
+  if (printerCfg.mode === 'system') {
+    showToast("Mode système : utilise le bouton Imprimer d'une commande.", 'info');
+    return;
+  }
+  runPrint(buildTestTicketLines());
+};
+const pickPrinter = async () => {
+  if (printerBusy) return;
+  setPrinterBusy(true);
+  try {
+    await connectPrinter(true);
+    showToast('Imprimante enregistrée : ' + (printerRef.current.device.name || 'Bluetooth'), 'success');
+  } catch (err) {
+    console.error('Erreur pickPrinter:', err);
+    const msg = String((err && err.message) || err);
+    if (/cancel/i.test(msg)) showToast("Aucune imprimante choisie.", 'info');
+    else showToast("Connexion impossible : " + msg, 'error');
+  } finally {
+    setPrinterBusy(false);
+  }
+};
+const forgetPrinter = async () => {
+  const ok = await askDialog({ title: "Oublier l'imprimante", message: "L'imprimante enregistrée sera retirée de cet appareil.", confirmLabel: 'Oublier', danger: true });
+  if (!ok) return;
+  try {
+    const ref = printerRef.current;
+    if (ref.device && ref.device.gatt && ref.device.gatt.connected) ref.device.gatt.disconnect();
+    if (ref.device && ref.device.forget) await ref.device.forget();
+  } catch (e) { console.warn('forgetPrinter:', e); }
+  printerRef.current = { device: null, char: null };
+  savePrinterCfg({ id: '', name: '', svc: '', chr: '' });
+  showToast('Imprimante oubliée.', 'info');
+};
+const renderPrinterModal = () => {
+  const hasBle = typeof navigator !== 'undefined' && !!navigator.bluetooth;
+  const sectionLabel = (text) => React.createElement("p", { className: "text-xs font-medium text-[#9CA3AF] uppercase tracking-wider mb-1.5 mt-4" }, text);
+  const segmented = (options, current, onPick) => React.createElement("div", { className: "flex p-1 gap-1 rounded-full bg-white/[0.04] border border-white/[0.06]" },
+    options.map(([value, label]) => React.createElement("button", {
+      key: String(value),
+      onClick: () => onPick(value),
+      className: `flex-1 py-2 text-[13px] font-medium rounded-full transition-colors ${current === value ? 'bg-[#E8F04F] text-[#0E1B2D]' : 'text-[#9CA3AF]'}`
+    }, label))
+  );
+  const modeHelp = {
+    ble: "Connexion directe en Bluetooth Low Energy (la plupart des imprimantes de tickets récentes). Chrome Android uniquement.",
+    rawbt: "Passe par l'application gratuite RawBT. Fonctionne avec presque toutes les imprimantes, y compris Bluetooth classique.",
+    system: "Utilise la boîte d'impression d'Android (bon A4 ou plugin de ton imprimante)."
+  };
+  return React.createElement(Modal, { isOpen: modals.printer, title: "Imprimante", onClose: () => setModals(prev => ({ ...prev, printer: false })) },
+    React.createElement("div", { className: "glass rounded-2xl px-4 py-3 flex items-center gap-3" },
+      React.createElement("span", { className: "text-xl" }, "🧾"),
+      React.createElement("div", { className: "flex-1 min-w-0" },
+        React.createElement("p", { className: "text-sm font-semibold text-[#F0F4F8] truncate" }, printerCfg.name || "Aucune imprimante enregistrée"),
+        React.createElement("p", { className: "text-[11px] text-[#9CA3AF] mt-0.5" }, `${printerCfg.width} mm · ${printerCfg.mode === 'ble' ? 'Bluetooth direct' : (printerCfg.mode === 'rawbt' ? 'RawBT' : 'Impression système')}`)
+      )
+    ),
+    sectionLabel("Mode d'impression"),
+    segmented([['ble', 'Bluetooth'], ['rawbt', 'RawBT'], ['system', 'Système']], printerCfg.mode, (v) => savePrinterCfg({ mode: v })),
+    React.createElement("p", { className: "text-[11px] text-[#9CA3AF] mt-2 leading-relaxed" }, modeHelp[printerCfg.mode]),
+    printerCfg.mode === 'ble' && !hasBle && React.createElement("p", { className: "text-[11px] text-rose-300 mt-2 leading-relaxed" }, "Bluetooth web indisponible ici (iPhone, Safari ou navigateur non compatible). Choisis RawBT ou Système."),
+    printerCfg.mode === 'ble' && hasBle && React.createElement(Button, { variant: "accent", className: "mt-3", disabled: printerBusy, onClick: pickPrinter }, printerCfg.name ? "Changer d'imprimante" : "Chercher une imprimante"),
+    printerCfg.mode !== 'system' && React.createElement(React.Fragment, null,
+      sectionLabel("Largeur du papier"),
+      segmented([[58, '58 mm'], [80, '80 mm']], printerCfg.width, (v) => savePrinterCfg({ width: v })),
+      React.createElement("button", {
+        onClick: () => savePrinterCfg({ cut: !printerCfg.cut }),
+        role: "switch",
+        "aria-checked": !!printerCfg.cut,
+        className: "glass w-full mt-4 rounded-2xl flex items-center gap-4 px-4 py-3.5 text-left transition-colors active:bg-white/[0.03]"
+      },
+        React.createElement("span", { className: "flex flex-col flex-1 min-w-0" },
+          React.createElement("span", { className: "text-sm font-semibold text-[#F0F4F8]" }, "Couper le papier"),
+          React.createElement("span", { className: "text-[11px] text-[#9CA3AF] mt-0.5" }, "Pour les imprimantes équipées d'un cutter")
+        ),
+        React.createElement("span", { className: `relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${printerCfg.cut ? 'bg-[#E8F04F]/90' : 'bg-white/[0.12]'}` },
+          React.createElement("span", { className: `absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-[0_2px_6px_rgba(3,8,18,0.4)] transition-transform duration-200 ${printerCfg.cut ? 'translate-x-5 bg-[#0E1B2D]' : 'translate-x-0 bg-[#F0F4F8]'}` })
+        )
+      )
+    ),
+    printerCfg.mode === 'ble' && React.createElement(React.Fragment, null,
+      sectionLabel("UUID du service (avancé, facultatif)"),
+      React.createElement("input", {
+        type: "text",
+        value: printerCfg.extraSvc || '',
+        onChange: e => savePrinterCfg({ extraSvc: e.target.value.trim() }),
+        placeholder: "ex : 18f0 ou e7810a71-73ae-…",
+        className: "w-full h-11 px-4 text-sm bg-white/[0.04] rounded-xl border border-white/[0.08] outline-none transition text-[#F0F4F8]"
+      }),
+      React.createElement("p", { className: "text-[11px] text-[#9CA3AF] mt-1.5 leading-relaxed" }, "À remplir seulement si ton imprimante n'est pas reconnue. Puis clique sur « Changer d'imprimante ».")
+    ),
+    React.createElement("div", { className: "flex flex-col gap-3 mt-5" },
+      React.createElement(Button, { disabled: printerBusy, onClick: printTestTicket }, printerBusy ? "Impression…" : "🖨 Ticket de test"),
+      printerCfg.name && React.createElement(Button, { variant: "danger", onClick: forgetPrinter }, "Oublier l'imprimante"),
+      React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, printer: false })) }, "Fermer")
+    )
+  );
+};
+      const printOrder = (order) => {
+        const esc = (v) => String(v == null ? '' : v)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+        const client = order.client || {};
+        const ref = String(order.id).slice(-6).toUpperCase();
+        const rows = order.items.map(item => {
+          const lineTotal = (item.quantity * item.price * item.packQty).toLocaleString();
+          return '<tr>'
+            + '<td>' + esc(item.name) + '</td>'
+            + '<td class="r">' + esc(item.quantity) + '</td>'
+            + (showPrices ? '<td class="r">' + lineTotal + ' DZD</td>' : '')
+            + '</tr>';
+        }).join('');
+        const clientLines = [
+          client.nom ? '<p><b>Client :</b> ' + esc(client.nom) + '</p>' : '',
+          client.adresse ? '<p><b>Adresse :</b> ' + esc(client.adresse) + '</p>' : '',
+          client.telephone ? '<p><b>Tél :</b> ' + esc(client.telephone) + '</p>' : '',
+          client.commentaire ? '<p><b>Note :</b> ' + esc(client.commentaire) + '</p>' : ''
+        ].join('');
+        const html = '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">'
+          + '<title>Commande ' + ref + '</title>'
+          + '<style>'
+          + '@page { size: A4; margin: 15mm; }'
+          + 'body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 14px; margin: 0; }'
+          + '.head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0E1B2D; padding-bottom: 10px; margin-bottom: 16px; }'
+          + '.head h1 { margin: 0; font-size: 24px; color: #0E1B2D; }'
+          + '.head .meta { text-align: right; font-size: 13px; }'
+          + '.client { margin-bottom: 16px; line-height: 1.5; }'
+          + '.client p { margin: 0; }'
+          + 'table { width: 100%; border-collapse: collapse; }'
+          + 'th { background: #0E1B2D; color: #fff; text-align: left; padding: 8px; font-size: 12px; text-transform: uppercase; }'
+          + 'td { padding: 8px; border-bottom: 1px solid #ccc; vertical-align: top; word-break: break-word; }'
+          + '.r { text-align: right; white-space: nowrap; }'
+          + 'th.r { text-align: right; }'
+          + '.total td { border-top: 2px solid #0E1B2D; border-bottom: none; font-weight: bold; font-size: 15px; }'
+          + '.sign { display: flex; justify-content: space-between; margin-top: 50px; font-size: 12px; }'
+          + '.sign div { width: 45%; border-top: 1px solid #111; padding-top: 6px; text-align: center; }'
+          + 'tr { page-break-inside: avoid; }'
+          + '</style></head><body>'
+          + '<div class="head"><h1>LD Holding</h1>'
+          + '<div class="meta"><b>Bon de commande</b><br>N° ' + ref + '<br>' + esc(formatOrderDate(order)) + '</div></div>'
+          + '<div class="client">' + clientLines + '</div>'
+          + '<table><thead><tr><th>Produit</th><th class="r">Qté</th>' + (showPrices ? '<th class="r">Prix</th>' : '') + '</tr></thead>'
+          + '<tbody>' + rows
+          + (showPrices ? '<tr class="total"><td colspan="2">Total</td><td class="r">' + Number(order.total).toLocaleString() + ' DZD</td></tr>' : '')
+          + '</tbody></table>'
+          + '<div class="sign"><div>Signature du vendeur</div><div>Signature du client</div></div>'
+          + '</body></html>';
+        const frame = document.createElement('iframe');
+        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+        document.body.appendChild(frame);
+        const doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        const cleanup = () => { setTimeout(() => { if (frame.parentNode) frame.parentNode.removeChild(frame); }, 1000); };
+        frame.contentWindow.onafterprint = cleanup;
+        setTimeout(() => {
+          try {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+          } catch (err) {
+            console.error('Erreur printOrder:', err);
+            showToast("Impossible d'imprimer.", 'error');
+          }
+          setTimeout(cleanup, 60000);
+        }, 300);
+      };
 
       useEffect(() => {
         const handlePopState = (event) => {
@@ -2844,7 +3327,16 @@ const renderSettingsModal = () => {
             const vb = tb ? tb.getTime() : 0;
             return vb - va;
           });
-        return React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => { setModals(prev => ({ ...prev, orders: false })); setExpandedOrderId(null); } },
+        return React.createElement(React.Fragment, null,
+        React.createElement(Modal, { isOpen: modals.orders, title: "Commandes", onClose: () => { setModals(prev => ({ ...prev, orders: false })); setExpandedOrderId(null); } },
+          React.createElement("button", {
+            onClick: () => setModals(prev => ({ ...prev, printer: true })),
+            className: "glass w-full mb-3 rounded-2xl flex items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-white/[0.03]"
+          },
+            React.createElement("span", { className: "text-lg" }, "🧾"),
+            React.createElement("span", { className: "flex-1 min-w-0 text-[13px] text-[#F0F4F8] truncate" }, printerCfg.name || (printerCfg.mode === 'ble' ? "Configurer l'imprimante" : (printerCfg.mode === 'rawbt' ? 'Imprimante : RawBT' : 'Imprimante : système'))),
+            React.createElement("span", { className: "text-[#9CA3AF] text-sm" }, "⚙")
+          ),
           React.createElement("div", { className: "relative grid grid-cols-3 p-1 mb-4 rounded-full bg-white/[0.04] border border-white/[0.06]" },
             React.createElement("span", {
               className: "absolute top-1 bottom-1 left-1 rounded-full bg-white/[0.09] border border-white/10 shadow-[0_4px_12px_-6px_rgba(3,8,18,0.8)] transition-transform duration-300 ease-out",
@@ -2913,18 +3405,22 @@ const renderSettingsModal = () => {
                         showPrices ? `${Number(order.total).toLocaleString()} DZD` : "-"
                       )
                     ),
-                    React.createElement("div", { className: "flex justify-end items-center mt-3" },
-                      React.createElement("div", { className: "flex flex-wrap gap-2" },
+                    React.createElement("div", { className: "mt-3 pt-3 border-t border-white/[0.06] space-y-2" },
+                      React.createElement("div", { className: "grid grid-cols-2 gap-2" },
+                        React.createElement("button", { onClick: () => printTicket(order), disabled: printerBusy, className: "flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold rounded-xl bg-[#E8F04F] text-[#0E1B2D] hover:brightness-110 active:scale-95 transition disabled:opacity-50" }, "🧾 Ticket"),
+                        React.createElement("button", { onClick: () => printOrder(order), className: "flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold rounded-xl bg-white/10 text-[#F0F4F8] border border-white/10 hover:bg-white/15 active:scale-95 transition" }, "🖨 Bon A4")
+                      ),
+                      React.createElement("div", { className: "flex gap-2" },
                         orderTab === 'received' && React.createElement(React.Fragment, null,
-                          React.createElement("button", { onClick: () => handleProcess(order.id), className: `text-sm bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Traiter"),
-                          React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
+                          React.createElement("button", { onClick: () => handleProcess(order.id), className: `flex-1 py-2.5 text-sm font-semibold rounded-xl bg-[${THEME.colors.primary}] text-[${THEME.colors.background}] hover:brightness-110 active:scale-95 transition` }, "Traiter"),
+                          React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "flex-1 py-2.5 text-sm font-semibold rounded-xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
                         ),
                         orderTab === 'processing' && React.createElement(React.Fragment, null,
-                          React.createElement("button", { onClick: () => handleDeliver(order.id), className: `text-sm bg-[${THEME.colors.secondary}] text-white px-3 py-1 rounded-full hover:brightness-110 active:scale-95 transition` }, "Livrer"),
-                          React.createElement("button", { onClick: () => handleBackToReceived(order.id), className: "text-sm bg-gray-600 text-white px-3 py-1 rounded-full hover:bg-gray-500 active:scale-95 transition" }, "← Retour"),
-                          React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
+                          React.createElement("button", { onClick: () => handleDeliver(order.id), className: `flex-1 py-2.5 text-sm font-semibold rounded-xl bg-[${THEME.colors.secondary}] text-white hover:brightness-110 active:scale-95 transition` }, "Livrer"),
+                          React.createElement("button", { onClick: () => handleBackToReceived(order.id), className: "flex-1 py-2.5 text-sm font-semibold rounded-xl bg-gray-600 text-white hover:bg-gray-500 active:scale-95 transition" }, "← Retour"),
+                          React.createElement("button", { onClick: () => handleCancelOrder(order.id), className: "flex-1 py-2.5 text-sm font-semibold rounded-xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition" }, "Annuler")
                         ),
-                        orderTab === 'delivered' && React.createElement("button", { onClick: () => handleDeleteOrder(order.id), className: "text-sm bg-rose-500 text-white px-3 py-1 rounded-full hover:bg-rose-600 active:scale-95 transition" }, "Supprimer")
+                        orderTab === 'delivered' && React.createElement("button", { onClick: () => handleDeleteOrder(order.id), className: "flex-1 py-2.5 text-sm font-semibold rounded-xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition" }, "Supprimer")
                       )
                     )
                   )
@@ -2932,6 +3428,8 @@ const renderSettingsModal = () => {
               }),
               React.createElement(Button, { onClick: () => { setModals(prev => ({ ...prev, orders: false })); setExpandedOrderId(null); }, className: "mt-4" }, "Fermer")
             )
+        ),
+        renderPrinterModal()
         );
       };
       const renderNotificationsModal = () =>
@@ -3045,7 +3543,8 @@ const renderConfirmDialog = () => {
           renderOrdersModal(),
           renderNotificationsModal(),
           renderAdvancedOptionsModal(),
-          renderPushPromptModal()
+          renderPushPromptModal(),
+          renderPrinterModal()
         );
       };
 const toggleClientView = () => {
