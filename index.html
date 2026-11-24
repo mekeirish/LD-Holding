@@ -727,6 +727,19 @@ const isPushSupported = () =>
         if (toastTimeout.current) clearTimeout(toastTimeout.current);
         setToast({ message: '', type: 'info', visible: false });
       };
+const [confirmDialog, setConfirmDialog] = useState(null);
+const [dialogInput, setDialogInput] = useState('');
+const askDialog = (opts) => new Promise(resolve => {
+  setDialogInput(opts.input ? String(opts.value || '') : '');
+  setConfirmDialog({ ...opts, resolve });
+});
+const closeDialog = (ok) => {
+  const d = confirmDialog;
+  setConfirmDialog(null);
+  if (!d) return;
+  if (d.input) d.resolve(ok ? dialogInput : null);
+  else d.resolve(!!ok);
+};
 
 const [modals, setModals] = useState({
   brand: false, product: false, brandSelect: false, manage: false,
@@ -1414,7 +1427,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
       };
 
       const handleTitleChange = async () => {
-        const newTitle = prompt('Entrez le nouveau titre :', appTitle);
+        const newTitle = await askDialog({ title: 'Titre de l\'application', message: 'Entrez le nouveau titre :', input: true, value: appTitle, confirmLabel: 'Enregistrer' });
         if (newTitle !== null && newTitle.trim() !== '') {
           const title = newTitle.trim();
           setAppTitle(title);
@@ -1690,6 +1703,8 @@ const addProductToCompilationGroup = (groupId, productId) => {
 
       const handleCancelOrder = async (orderId) => {
         try {
+          const ok = await askDialog({ title: 'Annuler la commande', message: 'La commande sera annulée et retirée de la liste.', confirmLabel: 'Annuler la commande', cancelLabel: 'Retour', danger: true });
+          if (!ok) return;
           await firebase.database().ref('orders').child(orderId).remove();
           showToast("Commande annulée.", "info");
         } catch (err) { console.error('Erreur handleCancelOrder:', err); showToast('Erreur lors de l\'annulation de la commande.', 'error'); }
@@ -1702,7 +1717,8 @@ const addProductToCompilationGroup = (groupId, productId) => {
         } catch (err) { console.error('Erreur handleBackToReceived:', err); showToast('Erreur lors du retour de la commande.', 'error'); }
       };
 const handleDeleteOrder = async (orderId) => {
-  if (!window.confirm('Supprimer définitivement cette commande ?')) return;
+  const ok = await askDialog({ title: 'Supprimer la commande', message: 'Cette commande livrée sera supprimée définitivement.', confirmLabel: 'Supprimer', danger: true });
+  if (!ok) return;
   try {
     await firebase.database().ref('orders').child(orderId).remove();
     showToast("Commande supprimée.", "info");
@@ -2984,6 +3000,26 @@ const renderSettingsModal = () => {
             }, "Non merci")
           )
         );
+const renderConfirmDialog = () => {
+  const d = confirmDialog;
+  return React.createElement(Modal, { isOpen: !!d, title: d ? d.title : '', onClose: () => closeDialog(false) },
+    d && React.createElement(React.Fragment, null,
+      d.message && React.createElement("p", { className: "text-sm text-[#C7CDD6] leading-relaxed" }, d.message),
+      d.input && React.createElement("input", {
+        type: "text",
+        autoFocus: true,
+        value: dialogInput,
+        onChange: e => setDialogInput(e.target.value),
+        onKeyDown: e => { if (e.key === 'Enter') closeDialog(true); },
+        className: "w-full h-12 mt-3 px-4 text-base bg-white/[0.04] rounded-xl border border-white/[0.08] outline-none transition text-[#F0F4F8]"
+      }),
+      React.createElement("div", { className: "flex gap-3 mt-5" },
+        React.createElement(Button, { variant: "secondary", onClick: () => closeDialog(false) }, d.cancelLabel || DICT.UI.BTN_CANCEL),
+        React.createElement(Button, { variant: d.danger ? "danger" : "primary", onClick: () => closeDialog(true) }, d.confirmLabel || "Confirmer")
+      )
+    )
+  );
+};
 
       const renderModals = () => {
         return React.createElement(React.Fragment, null,
@@ -3008,7 +3044,8 @@ const toggleClientView = () => {
   showToast(clientView ? "Retour à l'administration." : "Vue client activée.", 'info');
 };
 const forceUpdateAllDevices = async () => {
-  if (!window.confirm("Recharger l'app sur tous les appareils ?")) return;
+  const ok = await askDialog({ title: 'Forcer la mise à jour', message: "L'app sera rechargée sur tous les appareils, y compris celui-ci.", confirmLabel: 'Recharger partout' });
+  if (!ok) return;
   try {
     await firebase.database().ref('settings').update({ forceUpdate: Date.now() });
     showToast('Mise à jour envoyée à tous les appareils.', 'success');
@@ -3312,7 +3349,8 @@ const forceUpdateAllDevices = async () => {
         renderAdminsModal(),
         renderDeleteAdminModal(),
         renderCartBar(),
-        renderCompilationBar()
+        renderCompilationBar(),
+        renderConfirmDialog()
       );
     };
 
