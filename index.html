@@ -712,6 +712,24 @@ const [modals, setModals] = useState({
   imgbb: false, productDetail: false, cart: false, orders: false, notifications: false,
   advancedOptions: false, stats: false, compilations: false, settings: false
 });
+const [clientView, setClientView] = useState(false);
+const adminRestoredRef = useRef(false);
+useEffect(() => {
+  const savedHash = localStorage.getItem('admin_hash');
+  if (!savedHash) { adminRestoredRef.current = true; return; }
+  fetchAdmins()
+    .then(admins => {
+      if (admins.some(a => a.hash === savedHash)) setIsAdmin(true);
+      else localStorage.removeItem('admin_hash');
+    })
+    .catch(err => console.warn('Restauration session admin:', err))
+    .finally(() => { adminRestoredRef.current = true; });
+}, []);
+useEffect(() => {
+  if (isAdmin) return;
+  setClientView(false);
+  if (adminRestoredRef.current) localStorage.removeItem('admin_hash');
+}, [isAdmin]);
 const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem('haptics_enabled') !== 'false');
 const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('sound_enabled') === 'true');
 useEffect(() => {
@@ -906,10 +924,7 @@ const getPushSubscription = async () => {
       showToast('Notifications refusées. Vous pouvez les autoriser dans les réglages du navigateur.', 'error');
       return null;
     }
-    const reg = await Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("service worker inactif : ouvrez l'app installée")), 8000))
-    ]);
+    const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
       sub = await reg.pushManager.subscribe({
@@ -921,7 +936,7 @@ const getPushSubscription = async () => {
     return { endpoint: subJson.endpoint, keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth } };
   } catch (err) {
     console.error('Erreur abonnement push:', err);
-    showToast("Impossible d'activer les notifications : " + err.message, 'error');
+    showToast("Impossible d'activer les notifications.", 'error');
     return null;
   }
 };
@@ -1375,6 +1390,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
               setSelectedBrand(null);
               setShowPinModal(false);
               setPinInput('');
+              localStorage.setItem('admin_hash', inputHash);
               showToast('Mode administrateur activé.', 'success');
             } else {
               setPinError('Code PIN incorrect.');
@@ -1384,6 +1400,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
             if (pinInput !== pinConfirm) { setPinError('Les PINs ne correspondent pas.'); return; }
             try {
               await addAdminPin(pinInput, 'MEKEIRISHDEV');
+              localStorage.setItem('admin_hash', await hashPin(pinInput));
               setIsAdmin(true);
               setCurrentView(DICT.VIEW.DASHBOARD);
               setSelectedBrand(null);
@@ -2600,55 +2617,26 @@ const renderSettingsModal = () => {
                 cart.map(item => {
                   const totalItem = item.quantity * item.price * item.packQty;
                   const itemImage = (((brands.find(b => b.id === item.brandId) || {}).products || []).find(p => p.id === item.productId) || {}).image || null;
-                  return React.createElement("div", {
-                    key: item.id,
-                    className: "glass rounded-2xl p-3 flex gap-3"
-                  },
-                    React.createElement("div", { className: "flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden bg-[#1E2F44] border border-white/[0.06]" },
-                      itemImage
-                        ? React.createElement("img", { src: itemImage, alt: item.name, className: "w-full h-full object-cover" })
-                        : React.createElement("span", { className: "w-full h-full flex items-center justify-center text-[9px] font-medium tracking-[0.15em] uppercase text-[#9CA3AF]/60" }, "IMG")
-                    ),
-                    React.createElement("div", { className: "flex-1 min-w-0 flex flex-col justify-between gap-2" },
-                      React.createElement("div", { className: "flex items-start gap-2" },
-                        React.createElement("div", { className: "flex-1 min-w-0" },
-                          React.createElement("p", { className: "text-sm font-semibold text-[#F0F4F8] leading-snug line-clamp-2" }, item.name),
-                          React.createElement("p", { className: "tabular text-[11px] text-[#9CA3AF] mt-0.5" },
-                            `${item.packQty} unités/pack`,
-                            showPrices ? ` · ${Number(item.price).toLocaleString()} DZD/u` : ''
-                          )
-                        ),
-                        React.createElement("button", {
-                          onClick: () => removeFromCart(item.id),
-                          "aria-label": "Retirer du panier",
-                          className: "flex-shrink-0 -mt-1 -mr-1 w-9 h-9 rounded-full flex items-center justify-center text-[#9CA3AF] hover:text-rose-300 hover:bg-rose-500/10 active:scale-90 transition"
-                        },
-                          React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" },
-                            React.createElement("path", { d: "M4 7h16" }),
-                            React.createElement("path", { d: "M9 7V4h6v3" }),
-                            React.createElement("path", { d: "M6 7l1 13h10l1-13" })
-                          )
-                        )
-                      ),
-                      React.createElement("div", { className: "flex items-center justify-between gap-2" },
-                        React.createElement("div", { className: "flex items-center rounded-full bg-white/[0.05] border border-white/[0.08]" },
-                          React.createElement("button", {
-                            onClick: () => updateCartItemQuantity(item.id, -1),
-                            disabled: item.quantity <= 1,
-                            "aria-label": "Diminuer",
-                            className: "w-10 h-10 rounded-full flex items-center justify-center text-lg text-[#F0F4F8] active:bg-white/[0.06] disabled:opacity-30 transition"
-                          }, "−"),
-                          React.createElement("span", { className: "tabular min-w-[32px] text-center text-sm font-semibold text-[#F0F4F8]" }, item.quantity),
-                          React.createElement("button", {
-                            onClick: () => updateCartItemQuantity(item.id, 1),
-                            "aria-label": "Augmenter",
-                            className: "w-10 h-10 rounded-full flex items-center justify-center text-lg text-[#F0F4F8] active:bg-white/[0.06] transition"
-                          }, "+")
-                        ),
-                        showPrices && React.createElement("span", { className: "tabular text-sm font-semibold text-[#F0F4F8]" }, `${totalItem.toLocaleString()} DZD`)
-                      )
-                    )
-                  );
+      return React.createElement("div", {
+        className: "fixed inset-0 app-bg flex justify-center overflow-y-auto",
+        style: compilationMode ? { boxShadow: 'inset 0 0 0 2px rgba(239,68,68,0.55)' } : undefined
+      },
+        React.createElement("div", { className: `w-full max-w-sm min-h-screen px-5 pb-28 transition-opacity duration-300 ${isTransitioning ? 'opacity-0' : 'opacity-100'}` },
+          renderHeader(),
+          currentView === DICT.VIEW.DASHBOARD
+            ? ((isAdmin && !clientView && !compilationMode) ? renderAdminDashboard() : renderBrandGrid())
+            : renderProductGrid(),
+          renderModals(),
+          renderCompilationsModal(),
+          renderSettingsModal()
+        ),
+        React.createElement(Toast, { message: toast.message, type: toast.type, onClose: hideToast }),
+        renderPinModal(),
+        renderAdminsModal(),
+        renderDeleteAdminModal(),
+        renderCartBar(),
+        renderCompilationBar()
+      );
                 })
               ),
               React.createElement("div", { className: "glass rounded-2xl p-4 mt-4 space-y-2" },
@@ -2888,6 +2876,12 @@ const renderSettingsModal = () => {
           renderPushPromptModal()
         );
       };
+const toggleClientView = () => {
+  setClientView(prev => !prev);
+  setCurrentView(DICT.VIEW.DASHBOARD);
+  setSelectedBrand(null);
+  showToast(clientView ? "Retour à l'administration." : "Vue client activée.", 'info');
+};
       const renderHeader = () =>
         React.createElement("div", { className: "header-glass sticky top-0 z-30 -mx-5 px-5 pt-[max(env(safe-area-inset-top),14px)] pb-3 mb-5 flex justify-between items-center" },
           React.createElement("div", { className: "flex items-center gap-2 min-w-0" },
@@ -2915,11 +2909,15 @@ const renderSettingsModal = () => {
               onClick: () => { setCompilationMode(false); setCurrentView(DICT.VIEW.DASHBOARD); setSelectedBrand(null); setIsSelectingProducts(false); setSelectedForCompilation([]); },
               className: "px-3 py-1.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-400/30 text-xs font-semibold hover:bg-rose-500/20 active:scale-95 transition"
             }, "✕ Compilation"),
-            !compilationMode && isAdmin && React.createElement("button", {
+            !compilationMode && isAdmin && !clientView && React.createElement("button", {
               onClick: togglePrices,
               className: `tabular h-8 px-2.5 rounded-full text-[11px] font-semibold border transition-colors flex items-center justify-center active:scale-95 ${showPrices ? 'bg-[#E8F04F]/10 text-[#E8F04F] border-[#E8F04F]/35' : 'bg-white/[0.03] border-white/10 text-[#9CA3AF]'}`
             }, "DZD"),
-            !compilationMode && isAdmin && React.createElement("span", { className: "px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] rounded-full bg-white/[0.06] text-[#E8F04F]/90 border border-white/10" }, "Admin"),
+            !compilationMode && isAdmin && React.createElement("button", {
+              onClick: toggleClientView,
+              title: clientView ? "Revenir à l'administration" : "Passer en vue client",
+              className: `px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] rounded-full border active:scale-95 transition ${clientView ? 'bg-transparent text-[#9CA3AF] border-dashed border-white/20' : 'bg-white/[0.06] text-[#E8F04F]/90 border-white/10'}`
+            }, "Admin"),
             React.createElement("button", {
               onClick: () => setModals(prev => ({ ...prev, settings: true })),
               "aria-label": "Réglages",
@@ -2927,7 +2925,7 @@ const renderSettingsModal = () => {
             },
               React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" },
                 React.createElement("circle", { cx: 12, cy: 12, r: 3 }),
-                React.createElement("path", { d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.820.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" })
+                React.createElement("path", { d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.820.33l-.06.06a2 2 0 1 1-2.830-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.820l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" })
               )
             )
           )
