@@ -747,6 +747,7 @@ const [modals, setModals] = useState({
   advancedOptions: false, stats: false, compilations: false, settings: false
 });
 const [clientView, setClientView] = useState(false);
+const [missingUploading, setMissingUploading] = useState({});
       const PRINTER_BLE_SERVICES = [
         '000018f0-0000-1000-8000-00805f9b34fb',
         '0000ff00-0000-1000-8000-00805f9b34fb',
@@ -1764,6 +1765,96 @@ const handleDeleteOrder = async (orderId) => {
     showToast('Erreur lors de la suppression de la commande.', 'error');
   }
 };
+      const getMissingImageProducts = () => {
+        const list = [];
+        brands.forEach(b => {
+          (b.products || []).forEach(p => {
+            if (!p.image) list.push({ brandId: b.id, brandName: b.name, product: p });
+          });
+        });
+        return list;
+      };
+      const resizeImageFile = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Lecture du fichier impossible'));
+        reader.onload = event => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Image invalide'));
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const size = 300;
+            canvas.width = canvas.height = size;
+            const ctx = canvas.getContext("2d");
+            const ratio = Math.max(size / img.width, size / img.height);
+            const w = img.width * ratio, h = img.height * ratio;
+            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+            resolve(canvas.toDataURL("image/jpeg", 0.9));
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      const uploadMissingImage = async (brandId, productId, file) => {
+        if (!file) return;
+        const key = brandId + '_' + productId;
+        setMissingUploading(prev => ({ ...prev, [key]: true }));
+        try {
+          const dataUrl = await resizeImageFile(file);
+          const url = await uploadToImgbb(dataUrl);
+          await firebase.database().ref('brands').child(brandId).child('products').transaction(current => {
+            if (!Array.isArray(current)) return current;
+            return current.map(p => p.id === productId ? { ...p, image: url } : p);
+          });
+          showToast('Image ajoutée.', 'success');
+        } catch (err) {
+          console.error('Erreur uploadMissingImage:', err);
+          showToast('Erreur upload : ' + err.message, 'error');
+        } finally {
+          setMissingUploading(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+        }
+      };
+      const renderMissingImagesModal = () => {
+        const missing = getMissingImageProducts();
+        const closeModal = () => setModals(prev => ({ ...prev, missingImages: false }));
+        return React.createElement(Modal, { isOpen: modals.missingImages, title: "Produits sans images", onClose: closeModal },
+          missing.length === 0
+            ? React.createElement("p", { className: "text-sm text-[#C7CDD6] text-center py-4" }, "Tous les produits ont une image ✅")
+            : React.createElement("div", { className: "space-y-2" },
+                React.createElement("p", { className: "text-[11px] text-[#9CA3AF] leading-relaxed mb-1" }, `${missing.length} produit(s) sans image. Choisis une photo pour chacun : elle est envoyée automatiquement.`),
+                missing.map(item => {
+                  const key = item.brandId + '_' + item.product.id;
+                  const busy = !!missingUploading[key];
+                  return React.createElement("div", { key: key, className: "glass rounded-xl flex items-center gap-3 p-3" },
+                    React.createElement("div", { className: "flex-1 min-w-0" },
+                      React.createElement("p", { className: "text-sm font-medium text-[#F0F4F8] break-words leading-snug" }, item.product.name),
+                      React.createElement("p", { className: "text-[11px] text-[#9CA3AF] mt-0.5 truncate" }, item.brandName)
+                    ),
+                    React.createElement("label", {
+                      className: `flex-shrink-0 px-3 py-2 rounded-full text-sm font-semibold cursor-pointer active:scale-95 transition ${busy ? 'bg-white/10 text-[#F0F4F8] opacity-60 pointer-events-none' : 'bg-[#E8F04F] text-[#0E1B2D]'}`
+                    },
+                      busy ? "Envoi…" : "📷 Photo",
+                      React.createElement("input", {
+                        type: "file",
+                        accept: "image/*",
+                        className: "hidden",
+                        disabled: busy,
+                        onChange: e => {
+                          const file = e.target.files[0];
+                          e.target.value = '';
+                          uploadMissingImage(item.brandId, item.product.id, file);
+                        }
+                      })
+                    )
+                  );
+                })
+              ),
+          React.createElement(Button, { variant: "secondary", className: "mt-4", onClick: closeModal }, "Fermer")
+        );
+      };
 const savePrinterCfg = (patch) => {
   setPrinterCfg(prev => {
     const next = { ...prev, ...patch };
@@ -2959,9 +3050,11 @@ const renderSettingsModal = () => {
           )
         );
       const renderManageModal = () =>
+        React.createElement(React.Fragment, null,
         React.createElement(Modal, { isOpen: modals.manage, title: "Gestion", onClose: () => { setModals(prev => ({ ...prev, manage: false })); setShowDataPanel(false); } },
           !showDataPanel ?
             React.createElement(React.Fragment, null,
+              React.createElement(Button, { variant: "accent", className: "mb-4", disabled: getMissingImageProducts().length === 0, onClick: () => setModals(prev => ({ ...prev, missingImages: true })) }, `📷 Produits sans images (${getMissingImageProducts().length})`),
               brands.map(b => React.createElement("div", { key: b.id, className: "mb-3" },
                 React.createElement("button", {
                   onClick: () => setManageSelectedBrand(manageSelectedBrand === b.id ? null : b.id),
@@ -3044,6 +3137,8 @@ const renderSettingsModal = () => {
               ),
               React.createElement(Button, { variant: "secondary", onClick: () => { setShowDataPanel(false); setSelectedBrandForData(''); }, className: "mt-4" }, "Retour")
             )
+        ),
+        renderMissingImagesModal()
         );
       const renderBrandSelectModal = () =>
         React.createElement(Modal, { isOpen: modals.brandSelect, title: "Choisir Marque", onClose: () => setModals(prev => ({ ...prev, brandSelect: false })) },
