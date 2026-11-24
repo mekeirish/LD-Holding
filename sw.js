@@ -1,4 +1,4 @@
-const CACHE_NAME = 'LD-Holding-v3';
+const CACHE_NAME = 'LD-Holding-v4';
 const PRECACHE = ['./index.html', './manifest.json', './icon.png'];
 
 self.addEventListener('install', event => {
@@ -76,7 +76,7 @@ self.addEventListener('push', event => {
     self.registration.showNotification(title, {
       body: data.body || '',
       icon: './icon.png',
-      badge: './icon.png',
+      badge: './badge.png',
       tag: data.tag || 'ld-holding',
       renotify: true,
       data: { url: data.url || './index.html' }
