@@ -895,6 +895,74 @@ const dismissPushPrompt = () => {
   localStorage.setItem('push_prompt_dismissed_at', String(Date.now()));
   setPushPrompt(null);
 };
+const getPushSubscription = async () => {
+  if (!isPushSupported()) {
+    showToast("Notifications indisponibles. Sur iPhone, ajoutez d'abord l'app à l'écran d'accueil.", 'info');
+    return null;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('Notifications refusées. Vous pouvez les autoriser dans les réglages du navigateur.', 'error');
+      return null;
+    }
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("service worker inactif : ouvrez l'app installée")), 8000))
+    ]);
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    const subJson = sub.toJSON();
+    return { endpoint: subJson.endpoint, keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth } };
+  } catch (err) {
+    console.error('Erreur abonnement push:', err);
+    showToast("Impossible d'activer les notifications : " + err.message, 'error');
+    return null;
+  }
+};
+const [adminPushEnabled, setAdminPushEnabled] = useState(() =>
+  !!localStorage.getItem('admin_push_key') && isPushSupported() && Notification.permission === 'granted'
+);
+const enableAdminPush = async () => {
+  const sub = await getPushSubscription();
+  if (!sub) return;
+  try {
+    const key = (await hashPin(sub.endpoint)).slice(0, 32);
+    await firebase.database().ref('adminPush').child(key).set({ ...sub, createdAt: Date.now() });
+    localStorage.setItem('admin_push_key', key);
+    setAdminPushEnabled(true);
+    showToast('Notifications de commande activées sur cet appareil.', 'success');
+  } catch (err) {
+    console.error('Enregistrement appareil admin:', err);
+    showToast("Impossible d'enregistrer cet appareil.", 'error');
+  }
+};
+const disableAdminPush = async () => {
+  const key = localStorage.getItem('admin_push_key');
+  try {
+    if (key) await firebase.database().ref('adminPush').child(key).remove();
+  } catch (err) {
+    console.warn('Retrait appareil admin:', err);
+  }
+  localStorage.removeItem('admin_push_key');
+  setAdminPushEnabled(false);
+  showToast('Notifications de commande désactivées sur cet appareil.', 'info');
+};
+const notifyNewOrder = (orderId) => {
+  fetch(`${PUSH_WORKER_URL}/new-order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId })
+  })
+    .then(response => response.json())
+    .then(result => console.log('Push nouvelle commande:', result))
+    .catch(err => console.warn('Push nouvelle commande indisponible:', err));
+};
       const [editingProduct, setEditingProduct] = useState(null);
       const [manageSelectedBrand, setManageSelectedBrand] = useState(null);
       const [showDataPanel, setShowDataPanel] = useState(false);
@@ -1415,188 +1483,12 @@ const addProductToCompilationGroup = (groupId, productId) => {
 
       const saveBrandEdit = async () => {
         if (!editingBrandId) return;
-  try {
-    const o = {};
-    INJECT_OPTIONS.forEach(function(x) { o[x.key] = injectOpts ? !!injectOpts[x.key] : true; });
-    const chosen = INJECT_OPTIONS.filter(function(x) { return o[x.key]; }).map(function(x) { return x.label; });
-    if (chosen.length === 0) throw new Error('Aucun élément sélectionné');
-    addLog(repo, 'Éléments choisis : ' + chosen.join(', '), 'step');
-    const needHtml = o.manifest || o.head || o.splash || o.sw || o.install || o.signature || o.theme;
-
-    addLog(repo, 'Analyse du dépôt...', 'loading');
-    const listResp = await ghFetch(GH_API + '/repos/' + owner + '/' + repo + '/contents?ref=' + encodeURIComponent(branch), {
-      headers: { 'Authorization': 'token ' + tok }
-    });
-    let names = [];
-    if (listResp.ok) {
-      const items = await listResp.json();
-      if (Array.isArray(items)) names = items.filter(function(i) { return i.type === 'file'; }).map(function(i) { return i.name; });
-    } else if (listResp.status !== 404) {
-      throw new Error('Lecture du dépôt (HTTP ' + listResp.status + ')');
-    }
-    const has = function(n) { return names.indexOf(n) !== -1; };
-    const rep = { added: [], fixed: [], warn: [], notes: [] };
-    const toPush = [];
-    const pushedNames = [];
-    const filePush = function(path, b64) {
-      toPush.push({ path: path, b64: b64 });
-      if (pushedNames.indexOf(path) === -1) pushedNames.push(path);
-    };
-
-    // ---- index.html
-    const htmlFile = has('index.html') ? await hcReadFile(owner, repo, branch, tok, 'index.html') : null;
-    let originalHtml = '';
-    if (htmlFile) {
-      originalHtml = b64ToUtf8(htmlFile.b64);
-      addLog(repo, 'index.html lu', 'success');
-    } else if (needHtml) {
-      addLog(repo, 'index.html introuvable, création minimale', 'warning');
-      originalHtml = '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n<title>' + escapeHtml(repo) + '</title>\n</head>\n<body>\n<h1>' + escapeHtml(repo) + '</h1>\n</body>\n</html>\n';
-      rep.added.push('index.html minimal');
-    }
-    const meta = hcReadHtmlMeta(originalHtml);
-
-    // ---- manifest.json (lecture)
-    const mFile = has('manifest.json') ? await hcReadFile(owner, repo, branch, tok, 'manifest.json') : null;
-    const mText = mFile ? b64ToUtf8(mFile.b64) : null;
-    let pre = null;
-    try { pre = mText ? JSON.parse(mText.replace(/^\uFEFF/, '')) : null; } catch (e) { pre = null; }
-    if (!pre || typeof pre !== 'object' || Array.isArray(pre)) pre = {};
-    const baseBg = (typeof pre.background_color === 'string' && pre.background_color) || '#0b0f14';
-    const baseTheme = meta.theme || (typeof pre.theme_color === 'string' && pre.theme_color) || baseBg;
-    const appName = meta.title || repo;
-    const shortName = ((appName.split(/\s[-—–|:]\s/)[0] || repo).trim().slice(0, 12)) || repo.slice(0, 12);
-    const letter = (appName.trim().charAt(0) || 'A').toUpperCase();
-
-    // ---- icônes
-    addLog(repo, 'Vérification des icônes...', 'loading');
-    const icon512File = has('icon.png') ? await hcReadFile(owner, repo, branch, tok, 'icon.png') : null;
-    let b64_512 = icon512File ? icon512File.b64 : null;
-    let size512 = b64_512 ? hcPngSize(b64_512) : null;
-    let size192 = null;
-
-    if (o.icons) {
-      if (!b64_512) {
-        b64_512 = hcRenderLetterIcon(letter, 512, baseTheme);
-        size512 = { w: 512, h: 512 };
-        filePush('icon.png', b64_512);
-        rep.added.push('icon.png provisoire (lettre ' + letter + ')');
-        rep.notes.push('icon.png absent : icône provisoire créée, utilise ICON pour mettre la tienne');
-      } else if (!size512 || size512.w < 512 || size512.w !== size512.h) {
         try {
-          const imgFix = await loadImageFromSrc('data:image/png;base64,' + b64_512);
-          b64_512 = renderIconPng(imgFix, 512);
-          size512 = { w: 512, h: 512 };
-          filePush('icon.png', b64_512);
-          rep.fixed.push('icon.png remis en PNG carré 512x512');
-        } catch (e) {
-          size512 = null;
-          rep.warn.push('icon.png illisible : utilise le bouton ICON');
-        }
-      }
-    }
-
-    const had192 = has('icon-192.png');
-    if (had192) {
-      const f192 = await hcReadFile(owner, repo, branch, tok, 'icon-192.png');
-      if (f192) size192 = hcPngSize(f192.b64);
-    }
-    if (o.icons && b64_512 && size512 && (!had192 || !size192 || size192.w < 192 || size192.w !== size192.h)) {
-      try {
-        const img192 = await loadImageFromSrc('data:image/png;base64,' + b64_512);
-        filePush('icon-192.png', renderIconPng(img192, 192));
-        size192 = { w: 192, h: 192 };
-        if (had192) rep.fixed.push('icon-192.png régénéré en 192x192');
-        else rep.added.push('icon-192.png');
-      } catch (e) {
-        rep.warn.push('icon-192.png non généré');
-      }
-    }
-    const allNames = names.concat(pushedNames);
-
-    // ---- manifest.json (correction)
-    let themeForHtml = baseTheme;
-    if (o.manifest) {
-      const mRes = hcFixManifest(mText, {
-        name: appName, shortName: shortName, bg: baseBg, theme: baseTheme,
-        files: allNames,
-        has192: allNames.indexOf('icon-192.png') !== -1,
-        has512: allNames.indexOf('icon.png') !== -1,
-        size192: size192, size512: size512, warns: rep.warn
-      });
-      if (mRes.changes.length > 0) {
-        filePush('manifest.json', utf8ToB64(mRes.text));
-        if (mText && mText.trim()) rep.fixed.push('manifest.json : ' + mRes.changes.join(', '));
-        else rep.added.push('manifest.json');
-      }
-      themeForHtml = mRes.manifest.theme_color;
-    }
-
-    // ---- sw.js
-    if (o.sw) {
-      const sFile = has('sw.js') ? await hcReadFile(owner, repo, branch, tok, 'sw.js') : null;
-      const sRes = hcPatchSw(sFile ? b64ToUtf8(sFile.b64) : null, repo);
-      if (sRes.state === 'created') {
-        filePush('sw.js', utf8ToB64(sRes.text));
-        rep.added.push('sw.js');
-      } else if (sRes.state === 'patched') {
-        filePush('sw.js', utf8ToB64(sRes.text));
-        rep.fixed.push('sw.js : gestionnaire fetch ajouté (requis pour l\'installation)');
-      }
-    }
-
-    // ---- index.html (selon les éléments choisis)
-    if (needHtml) {
-      const splashNames = names.filter(function(n) { return /^splash-\d+x\d+\.png$/.test(n); });
-      const newHtml = hcPatchHtml(originalHtml, {
-        rep: rep,
-        theme: themeForHtml,
-        splashNames: splashNames,
-        opts: o
-      });
-      if (!htmlFile || newHtml !== originalHtml) filePush('index.html', utf8ToB64(newHtml));
-    }
-
-    rep.added.forEach(function(x) { addLog(repo, '+ ' + x, 'success'); });
-    rep.fixed.forEach(function(x) { addLog(repo, '~ ' + x, 'success'); });
-    rep.notes.forEach(function(x) { addLog(repo, 'ℹ ' + x, 'step'); });
-    rep.warn.forEach(function(x) { addLog(repo, x, 'warning'); });
-
-    if (toPush.length === 0) {
-      addLog(repo, '✅ Rien à modifier pour les éléments choisis', 'success');
-      showNotification('Déjà conforme pour les éléments choisis', 'success');
-      return;
-    }
-
-    const paths = toPush.map(function(f) { return f.path; });
-    const newSha = await pushFilesInOneCommit(owner, repo, branch, tok, toPush, 'Hubcode: injection PWA (' + paths.join(', ') + ')', repo);
-    addLog(repo, '✅ PWA injectée (1 commit) : ' + paths.join(', '), 'success');
-    showNotification('Injection PWA terminée', 'success');
-    try { watchPagesDeploy(owner, repo, new Response(JSON.stringify({ commit: { sha: newSha } }))); } catch (e) {}
-
-    try {
-      delete fileCache[repo]; delete allFilesCache[repo]; delete linesCache[owner + '/' + repo];
-      const freshFiles = await loadFilesForRepo(owner, repo, branch, tok);
-      const filesRow = byId('files-' + repo);
-      if (filesRow && freshFiles && freshFiles.length > 0) {
-        filesRow.innerHTML = '';
-        freshFiles.forEach(function(fn) { filesRow.appendChild(createFileButton(owner, repo, fn, branch)); });
-      }
-      const raw = allFilesCache[repo] || [];
-      const complete = ['index.html', 'manifest.json', 'sw.js', 'icon.png'].every(function(f) { return raw.indexOf(f) !== -1; });
-      const repoEl = byId('repo-' + repo);
-      if (repoEl) repoEl.classList.toggle('repo-incomplete', !complete);
-      if (freshFiles && freshFiles.indexOf('index.html') !== -1) {
-        loadIndexLineCount(owner, repo, branch, tok).then(function(c) { updateLinesBadge(repo, c); });
-      }
-    } catch (e) {}
-  } catch (err) {
-    addLog(repo, 'ERREUR : ' + err.message, 'error');
-    showNotification('Échec injection : ' + err.message, 'danger');
-  } finally {
-    setActivityState(false);
-    setRepoBusy(repo, false);
-  }
+          const updated = { name: editingBrandName, image: editingBrandImage };
+          await firebase.database().ref('brands').child(editingBrandId).update(updated);
+          cancelEditBrand();
+          showToast("Marque modifiée avec succès.", "success");
+        } catch (err) { console.error('Erreur saveBrandEdit:', err); showToast('Erreur lors de la modification de la marque.', 'error'); }
       };
 
       const deleteBrand = async () => {
@@ -1693,6 +1585,7 @@ const addProductToCompilationGroup = (groupId, productId) => {
           }
           setModals(prev => ({ ...prev, cart: false }));
           sendNtfy(totalItems, total, clientInfo.nom, clientInfo.commentaire);
+          notifyNewOrder(orderRef.key);
           if (shouldOfferPushPrompt()) setPushPrompt({ orderId: orderRef.key });
         } catch (err) { console.error('Erreur validateOrder:', err); showToast('Erreur lors de la validation de la commande.', 'error'); }
       };
@@ -2405,6 +2298,17 @@ const renderSettingsModal = () => {
         const next = !orderAlertEnabled;
         setOrderAlertEnabled(next);
         if (next) playOrderAlertSound();
+      }
+    },
+    {
+      key: 'adminPush',
+      label: 'Notifications de commande',
+      hint: isPushSupported() ? 'Notification système à chaque commande, même app fermée' : "Sur iPhone : ajoutez d'abord l'app à l'écran d'accueil",
+      value: adminPushEnabled,
+      disabled: !isPushSupported(),
+      onToggle: () => {
+        if (adminPushEnabled) disableAdminPush();
+        else enableAdminPush();
       }
     }
   ];
