@@ -730,6 +730,30 @@ useEffect(() => {
   setClientView(false);
   if (adminRestoredRef.current) localStorage.removeItem('admin_hash');
 }, [isAdmin]);
+useEffect(() => {
+  const forceRef = firebase.database().ref('settings/forceUpdate');
+  const forceListener = forceRef.on('value', async (snapshot) => {
+    const stamp = Number(snapshot.val() || 0);
+    if (!stamp) return;
+    const seen = Number(localStorage.getItem('force_update_seen') || 0);
+    localStorage.setItem('force_update_seen', String(stamp));
+    if (!seen || stamp <= seen) return;
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.update()));
+      }
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch (err) {
+      console.warn('Mise à jour forcée:', err);
+    }
+    window.location.reload();
+  });
+  return () => forceRef.off('value', forceListener);
+}, []);
 const [hapticsEnabled, setHapticsEnabled] = useState(() => localStorage.getItem('haptics_enabled') !== 'false');
 const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('sound_enabled') === 'true');
 useEffect(() => {
@@ -2911,6 +2935,16 @@ const toggleClientView = () => {
   setSelectedBrand(null);
   showToast(clientView ? "Retour à l'administration." : "Vue client activée.", 'info');
 };
+const forceUpdateAllDevices = async () => {
+  if (!window.confirm("Recharger l'app sur tous les appareils ?")) return;
+  try {
+    await firebase.database().ref('settings').update({ forceUpdate: Date.now() });
+    showToast('Mise à jour envoyée à tous les appareils.', 'success');
+  } catch (err) {
+    console.error('Mise à jour forcée:', err);
+    showToast("Impossible d'envoyer la mise à jour.", 'error');
+  }
+};
       const renderHeader = () =>
         React.createElement("div", { className: "header-glass sticky top-0 z-30 -mx-5 px-5 pt-[max(env(safe-area-inset-top),14px)] pb-3 mb-5 flex justify-between items-center" },
           React.createElement("div", { className: "flex items-center gap-2 min-w-0" },
@@ -2990,7 +3024,11 @@ const toggleClientView = () => {
                 t.wide && t.badge > 0 && React.createElement("span", { className: "tabular flex-shrink-0 min-w-[28px] h-7 px-2 rounded-full bg-[#E8F04F]/10 border border-[#E8F04F]/25 text-[#E8F04F] text-xs font-semibold flex items-center justify-center" }, t.badge)
               )
             )
-          )
+          ),
+          React.createElement("button", {
+            onClick: forceUpdateAllDevices,
+            className: "w-full mt-6 py-2.5 rounded-xl text-xs font-medium text-[#9CA3AF] border border-dashed border-white/10 hover:text-[#F0F4F8] active:scale-95 transition"
+          }, "↻ Forcer la mise à jour sur tous les appareils")
         );
       };
       const renderBrandGrid = () =>
