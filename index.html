@@ -867,7 +867,7 @@ useEffect(() => {
     .catch(err => console.warn('Vérification abonnement push:', err));
 }, []);
 const getStoredPushSubscription = () => {
-  if (!pushTracking) return null;
+  if (!pushTracking || !trackingEnabled) return null;
   try {
     const s = JSON.parse(localStorage.getItem('push_subscription') || 'null');
     if (!s || !s.endpoint || !s.keys) return null;
@@ -937,8 +937,28 @@ const notifyOrderStatus = (orderId, status) => {
     .catch(err => console.warn('Push suivi commande indisponible:', err));
 };
 const [pushPrompt, setPushPrompt] = useState(null);
+const [trackingEnabled, setTrackingEnabled] = useState(() => localStorage.getItem('tracking_enabled') !== 'false');
+useEffect(() => {
+  const trackingRef = firebase.database().ref('settings/trackingEnabled');
+  const trackingListener = trackingRef.on('value', (snapshot) => {
+    const enabled = snapshot.val() !== false;
+    setTrackingEnabled(enabled);
+    localStorage.setItem('tracking_enabled', String(enabled));
+  });
+  return () => trackingRef.off('value', trackingListener);
+}, []);
+const toggleTrackingSetting = async () => {
+  const next = !trackingEnabled;
+  try {
+    await firebase.database().ref('settings').update({ trackingEnabled: next });
+    showToast(next ? 'Suivi de commande proposé aux clients.' : 'Suivi de commande masqué pour les clients.', 'info');
+  } catch (err) {
+    console.error('Réglage suivi:', err);
+    showToast("Impossible d'enregistrer le réglage.", 'error');
+  }
+};
 const shouldOfferPushPrompt = () => {
-  if (!isPushSupported() || pushTracking) return false;
+  if (!trackingEnabled || !isPushSupported() || pushTracking) return false;
   if (Notification.permission === 'denied') return false;
   const dismissedAt = Number(localStorage.getItem('push_prompt_dismissed_at') || 0);
   return Date.now() - dismissedAt > 30 * 24 * 60 * 60 * 1000;
@@ -2759,7 +2779,7 @@ const renderSettingsModal = () => {
                   )
                 )
               ),
-              React.createElement("button", {
+              trackingEnabled && React.createElement("button", {
                 onClick: pushSupported ? togglePushTracking : () => showToast("Sur iPhone, ajoutez d'abord l'app à l'écran d'accueil pour recevoir le suivi.", 'info'),
                 role: "switch",
                 "aria-checked": pushTracking,
@@ -2892,6 +2912,26 @@ const renderSettingsModal = () => {
         React.createElement(Modal, { isOpen: modals.notifications, title: "Notifications ntfy", onClose: () => setModals(prev => ({ ...prev, notifications: false })) },
           React.createElement("label", { className: `block text-xs font-medium text-[${THEME.colors.textMuted}] uppercase tracking-wider mb-1` }, "NTFY Topic :"),
           React.createElement("input", { type: "text", className: `w-full p-3 mb-4 bg-[${THEME.colors.inputBg}] rounded-xl border border-[${THEME.colors.border}] focus:border-[${THEME.colors.primary}] outline-none transition text-[${THEME.colors.text}]`, value: ntfyTopic, onChange: e => setNtfyTopic(e.target.value.trim()), placeholder: "Entrez le topic ntfy" }),
+          React.createElement("button", {
+            onClick: toggleTrackingSetting,
+            role: "switch",
+            "aria-checked": trackingEnabled,
+            className: "glass w-full mb-4 rounded-2xl flex items-center gap-4 px-4 py-3.5 text-left transition-colors active:bg-white/[0.03]"
+          },
+            React.createElement("span", { className: "flex flex-col flex-1 min-w-0" },
+              React.createElement("span", { className: "text-sm font-semibold text-[#F0F4F8]" }, "Suivi des commandes"),
+              React.createElement("span", { className: "text-[11px] text-[#9CA3AF] mt-0.5" },
+                trackingEnabled ? "Les clients peuvent activer les notifications de suivi" : "Option masquée dans le panier des clients"
+              )
+            ),
+            React.createElement("span", {
+              className: `relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${trackingEnabled ? 'bg-[#E8F04F]/90' : 'bg-white/[0.12]'}`
+            },
+              React.createElement("span", {
+                className: `absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-[0_2px_6px_rgba(3,8,18,0.4)] transition-transform duration-200 ${trackingEnabled ? 'translate-x-5 bg-[#0E1B2D]' : 'translate-x-0 bg-[#F0F4F8]'}`
+              })
+            )
+          ),
           React.createElement("div", { className: "flex gap-3 mt-2" },
             React.createElement(Button, { variant: "secondary", onClick: () => setModals(prev => ({ ...prev, notifications: false })) }, DICT.UI.BTN_CANCEL),
             React.createElement(Button, { onClick: testNtfy }, "Tester")
