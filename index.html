@@ -1084,6 +1084,47 @@ const disableAdminPush = async () => {
   setAdminPushEnabled(false);
   showToast('Notifications de commande désactivées sur cet appareil.', 'info');
 };
+useEffect(() => {
+  if (!isAdmin || !isPushSupported() || Notification.permission !== 'granted') return;
+  let cancelled = false;
+  (async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        if (cancelled) return;
+        localStorage.removeItem('admin_push_key');
+        setAdminPushEnabled(false);
+        return;
+      }
+      const key = (await hashPin(sub.endpoint)).slice(0, 32);
+      const snapshot = await firebase.database().ref('adminPush').child(key).once('value');
+      if (cancelled) return;
+      const storedKey = localStorage.getItem('admin_push_key');
+      if (snapshot.exists()) {
+        localStorage.setItem('admin_push_key', key);
+        setAdminPushEnabled(true);
+      } else if (storedKey) {
+        const json = sub.toJSON();
+        await firebase.database().ref('adminPush').child(key).set({
+          endpoint: json.endpoint,
+          keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+          createdAt: Date.now()
+        });
+        localStorage.setItem('admin_push_key', key);
+        setAdminPushEnabled(true);
+      } else {
+        setAdminPushEnabled(false);
+      }
+      if (storedKey && storedKey !== key) {
+        firebase.database().ref('adminPush').child(storedKey).remove().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Synchronisation notifications admin:', err);
+    }
+  })();
+  return () => { cancelled = true; };
+}, [isAdmin]);
 const notifyNewOrder = (orderId) => {
   fetch(`${PUSH_WORKER_URL}/new-order`, {
     method: 'POST',
