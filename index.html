@@ -1878,14 +1878,16 @@ const buildTicketLines = (order) => {
   if (client.telephone) lines.push({ type: 'text', text: 'Tél : ' + client.telephone, size: 'm' });
   if (client.commentaire) lines.push({ type: 'text', text: 'Note : ' + client.commentaire, size: 'm' });
   lines.push({ type: 'sep' });
-  order.items.forEach(item => {
-    lines.push({ type: 'text', text: item.name, size: 'm', bold: true, fit: true });
-    lines.push({
-      type: 'row',
-      left: '   x' + item.quantity,
-      right: showPrices ? fmt(item.quantity * item.price * item.packQty) + ' DZD' : '',
-      size: 'm'
-    });
+  lines.push({
+    type: 'table',
+    size: 'm',
+    showPrice: !!showPrices,
+    header: ['Produit', 'Qté', 'Prix'],
+    rows: order.items.map(item => [
+      item.name,
+      String(item.quantity),
+      showPrices ? fmt(item.quantity * item.price * item.packQty) : ''
+    ])
   });
   lines.push({ type: 'sep' });
   if (showPrices) lines.push({ type: 'row', left: 'TOTAL', right: fmt(order.total) + ' DZD', size: 'l', bold: true });
@@ -1955,6 +1957,44 @@ const renderTicketCanvas = (lines, dots) => {
       y += Math.round(10 * scale);
       return;
     }
+    if (line.type === 'table') {
+      const tablePx = Math.round((sizes[line.size] || 21) * scale);
+      measure.font = fontOf({ bold: true }, tablePx);
+      const widest = (index) => Math.max.apply(null, [line.header[index]].concat(line.rows.map(r => r[index])).map(txt => measure.measureText(txt).width));
+      const qtyW = widest(1);
+      const priceW = line.showPrice ? widest(2) : 0;
+      const nameW = Math.max(60, maxW - qtyW - (priceW ? priceW + gap : 0) - gap);
+      const qtyRight = pad + nameW + gap + qtyW;
+      const priceRight = dots - pad;
+      const headerFont = fontOf({ bold: true }, tablePx);
+      ops.push({ kind: 'text', text: line.header[0], x: pad, y: y, font: headerFont, align: 'left' });
+      ops.push({ kind: 'text', text: line.header[1], x: qtyRight, y: y, font: headerFont, align: 'right' });
+      if (line.showPrice) ops.push({ kind: 'text', text: line.header[2], x: priceRight, y: y, font: headerFont, align: 'right' });
+      y += Math.round(tablePx * 1.3);
+      ops.push({ kind: 'sep', y: y, h: 1 });
+      y += Math.round(5 * scale);
+      line.rows.forEach(row => {
+        let namePx = tablePx;
+        const minNamePx = Math.round(tablePx * 0.8);
+        while (namePx > minNamePx) {
+          measure.font = fontOf({ bold: true }, namePx);
+          if (measure.measureText(row[0]).width <= nameW) break;
+          namePx--;
+        }
+        const nameFont = fontOf({ bold: true }, namePx);
+        const nameLines = wrap(row[0], nameFont, nameW);
+        nameLines.forEach((txt, i) => {
+          ops.push({ kind: 'text', text: txt, x: pad, y: y, font: nameFont, align: 'left' });
+          if (i === 0) {
+            ops.push({ kind: 'text', text: row[1], x: qtyRight, y: y, font: fontOf({ bold: true }, tablePx), align: 'right' });
+            if (line.showPrice) ops.push({ kind: 'text', text: row[2], x: priceRight, y: y, font: fontOf({}, tablePx), align: 'right' });
+          }
+          y += Math.round(namePx * 1.3);
+        });
+        y += Math.round(4 * scale);
+      });
+      return;
+    }
     const basePx = Math.round((sizes[line.size] || 21) * scale);
     let px = basePx;
     if (line.fit && line.type === 'text') {
@@ -1995,7 +2035,7 @@ const renderTicketCanvas = (lines, dots) => {
   ctx.textBaseline = 'top';
   ops.forEach(op => {
     if (op.kind === 'sep') {
-      ctx.fillRect(pad, op.y, dots - pad * 2, Math.max(2, Math.round(2 * scale)));
+      ctx.fillRect(pad, op.y, dots - pad * 2, op.h || Math.max(2, Math.round(2 * scale)));
       return;
     }
     ctx.font = op.font;
