@@ -1879,7 +1879,7 @@ const buildTicketLines = (order) => {
   if (client.commentaire) lines.push({ type: 'text', text: 'Note : ' + client.commentaire, size: 'm' });
   lines.push({ type: 'sep' });
   order.items.forEach(item => {
-    lines.push({ type: 'text', text: item.name, size: 'm', bold: true });
+    lines.push({ type: 'text', text: item.name, size: 'm', bold: true, fit: true });
     lines.push({
       type: 'row',
       left: '   x' + item.quantity,
@@ -1910,14 +1910,14 @@ const buildTestTicketLines = () => {
   ];
 };
 const renderTicketCanvas = (lines, dots) => {
-  const scale = dots / 384;
+  const scale = 1;
   const pad = Math.round(8 * scale);
   const gap = Math.round(10 * scale);
   const maxW = dots - pad * 2;
-  const sizes = { s: 20, m: 24, l: 32, xl: 42 };
+  const sizes = { s: 18, m: 21, l: 28, xl: 38 };
   const family = 'Arial, Helvetica, sans-serif';
   const measure = document.createElement('canvas').getContext('2d');
-  const fontOf = (line) => (line.bold ? 'bold ' : '') + Math.round((sizes[line.size] || 24) * scale) + 'px ' + family;
+  const fontOf = (line, px) => (line.bold ? 'bold ' : '') + px + 'px ' + family;
 
   const wrap = (text, font, width) => {
     measure.font = font;
@@ -1955,8 +1955,18 @@ const renderTicketCanvas = (lines, dots) => {
       y += Math.round(10 * scale);
       return;
     }
-    const font = fontOf(line);
-    const lh = Math.round((sizes[line.size] || 24) * scale * 1.3);
+    const basePx = Math.round((sizes[line.size] || 21) * scale);
+    let px = basePx;
+    if (line.fit && line.type === 'text') {
+      const minPx = Math.round(basePx * 0.75);
+      while (px > minPx) {
+        measure.font = fontOf(line, px);
+        if (measure.measureText(line.text).width <= maxW) break;
+        px--;
+      }
+    }
+    const font = fontOf(line, px);
+    const lh = Math.round(px * 1.3);
     if (line.type === 'row') {
       measure.font = font;
       const rightW = line.right ? measure.measureText(line.right).width : 0;
@@ -2104,7 +2114,7 @@ const sendToRawBt = (bytes) => {
 };
 const runPrint = async (lines) => {
   if (printerBusy) return;
-  const dots = printerCfg.width === 80 ? 576 : 384;
+  const dots = ({ 58: 384, 80: 576, 110: 832 })[printerCfg.width] || 384;
   const bytes = canvasToEscPos(renderTicketCanvas(lines, dots), printerCfg.cut);
   if (printerCfg.mode === 'rawbt') {
     showToast('Envoi à RawBT…', 'info');
@@ -2196,7 +2206,7 @@ const renderPrinterModal = () => {
     printerCfg.mode === 'ble' && hasBle && React.createElement(Button, { variant: "accent", className: "mt-3", disabled: printerBusy, onClick: pickPrinter }, printerCfg.name ? "Changer d'imprimante" : "Chercher une imprimante"),
     printerCfg.mode !== 'system' && React.createElement(React.Fragment, null,
       sectionLabel("Largeur du papier"),
-      segmented([[58, '58 mm'], [80, '80 mm']], printerCfg.width, (v) => savePrinterCfg({ width: v })),
+      segmented([[58, '58 mm'], [80, '80 mm'], [110, '110 mm']], printerCfg.width, (v) => savePrinterCfg({ width: v })),
       React.createElement("button", {
         onClick: () => savePrinterCfg({ cut: !printerCfg.cut }),
         role: "switch",
